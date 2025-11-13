@@ -11,7 +11,7 @@ class ConvBnSpiking(nn.Module):
     def forward(self, x):
         x = self.conv(x)
         x = self.bn(x)
-        x, _ = self.spike(x)
+        x = self.spike(x)
         return x
     
 class ConvBn(nn.Module):
@@ -44,5 +44,5 @@ class SpikingResidualBlock(nn.Module):
             identity = self.downsample(x)
 
         out += identity
-        out, _ = self.spike(out)
+        out = self.spike(out)
         return out
