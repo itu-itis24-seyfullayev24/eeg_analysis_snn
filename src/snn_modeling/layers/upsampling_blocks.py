@@ -18,3 +18,10 @@ class SpikingUpsampleBlock(nn.Module):
         x = torch.cat([x, x_skip], dim=1)
         x = self.res(x)
         return x
+
+class UpsampleBlock(nn.Module):
+    def __init__(self, in_channels, out_channels):
+        super(UpsampleBlock, self).__init__()
+
+    def forward(self, x, x_skip):
+        raise NotImplementedError("This is a placeholder for a non-spiking upsample block.")

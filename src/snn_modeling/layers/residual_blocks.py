@@ -46,3 +46,10 @@ class SpikingResidualBlock(nn.Module):
         out += identity
         out = self.spike(out)
         return out
+    
+class ResidualBlock(nn.Module):
+    def __init__(self, in_channels, out_channels, stride=1, downsample=False):
+        super(ResidualBlock, self).__init__()
+        
+    def forward(self, x):
+        raise NotImplementedError("This is a placeholder for the ANN Residual Block.")

@@ -3,9 +3,9 @@ import snntorch as snn
 from ..layers.residual_blocks import SpikingResidualBlock
 from ..layers.stem import StemLayer
 
-class ResNet18Encoder(nn.Module):
+class SpikingResNet18Encoder(nn.Module):
     def __init__(self, in_channels, spike_model=snn.Leaky, **neuron_params):
-        super(ResNet18Encoder, self).__init__()
+        super(SpikingResNet18Encoder, self).__init__()
         self.stem = StemLayer(in_channels)
         
         self.layer1 = nn.Sequential(
@@ -32,9 +32,9 @@ class ResNet18Encoder(nn.Module):
         s4 = self.layer4(s3)
         return s4, [s1,s2,s3]
     
-class ResNet34Encoder(nn.Module):
+class SpikingResNet34Encoder(nn.Module):
     def __init__(self, in_channels, spike_model=snn.Leaky, **neuron_params):
-        super(ResNet34Encoder, self).__init__()
+        super(SpikingResNet34Encoder, self).__init__()
         self.stem = StemLayer(in_channels)
         
         self.layer1 = nn.Sequential(
@@ -69,4 +69,16 @@ class ResNet34Encoder(nn.Module):
         s4 = self.layer4(s3)
         return s4, [s1,s2,s3]
 
+class ResNet18Encoder(nn.Module):
+    def __init__(self, in_channels):
+        super(ResNet18Encoder, self).__init__()
+    def forward(self, x):
+        raise NotImplementedError("This is a placeholder for the ANN ResNet18 Encoder.")
+
+class ResNet34Encoder(nn.Module):
+    def __init__(self, in_channels):
+        super(ResNet34Encoder, self).__init__()
+    def forward(self, x):
+        raise NotImplementedError("This is a placeholder for the ANN ResNet18 Encoder.")
+    
 # TODO: Implement ResNet50Encoder only if ResNet34Encoder is not sufficient for the task (BottleneckBlocks needed)

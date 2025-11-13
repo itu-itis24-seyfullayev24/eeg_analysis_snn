@@ -3,9 +3,9 @@ import snntorch as snn
 from ..layers.residual_blocks import *
 from ..layers.upsampling_blocks import *
 
-class ResNetDecoder(nn.Module):
+class SpikingResNetDecoder(nn.Module):
     def __init__(self, spike_model=snn.Leaky, **neuron_params):
-        super(ResNetDecoder, self).__init__()
+        super(SpikingResNetDecoder, self).__init__()
         
         self.up1 = SpikingUpsampleBlock(512, 256, spike_model=spike_model, **neuron_params)
         self.up2 = SpikingUpsampleBlock(256, 128, spike_model=spike_model, **neuron_params)
@@ -24,3 +24,10 @@ class ResNetDecoder(nn.Module):
         x = self.up3(x, s1)
         x = self.final_up(x)
         return x
+
+class ResNetDecoder(nn.Module):
+    def __init__(self):
+        super(ResNetDecoder, self).__init__()
+        
+    def forward(self, x, skips):
+        raise NotImplementedError("This is a placeholder for the ANN ResNet Decoder.")
