@@ -1,0 +1,11 @@
+.vscode
+venv
+__pycache__/
+*.pyc
+.DS_Store
+.ipynb_checkpoints
+data/
+logs/
+test.py
+results/
+wandb/
