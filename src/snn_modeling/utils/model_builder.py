@@ -2,12 +2,29 @@
 import snntorch as snn
 from ..models.unet import SpikingUNet, UNet
 from ..models.encoders import ResNet18Encoder, ResNet34Encoder, SpikingResNet18Encoder, SpikingResNet34Encoder
+import inspect
 
 SPIKE_MODEL_MAP = {
     "snn.Leaky": snn.Leaky,
     "snn.Synaptic": snn.Synaptic,
     "snn.Alpha": snn.Alpha
 }
+
+def get_filtered_neuron_params(neuron_class, full_config_params):
+    """
+    Inspects the neuron_class (e.g., snn.Leaky) and filters the full_config_params
+    to return only the arguments that this specific neuron actually accepts.
+    """
+   
+    sig = inspect.signature(neuron_class.__init__)
+    valid_keys = sig.parameters.keys()
+
+    filtered_params = {
+        k: v for k, v in full_config_params.items() 
+        if k in valid_keys
+    }
+
+    return filtered_params
 
 def build_model(config):
     model_type = config['model']['type']
@@ -20,15 +37,22 @@ def build_model(config):
         else:
             raise ValueError(f"Unknown encoder type: {config['model']['encoder_type']}")
         spike_model_class = SPIKE_MODEL_MAP[config['neuron_params']['spike_model']]
-
+        snn_params = {
+            'alpha': config['neuron_params'].get('alpha', 0.8),
+            'beta': config['neuron_params'].get('beta', 0.9),
+            'threshold': config['neuron_params'].get('threshold', 1.),
+            'learn_alpha': config['neuron_params'].get('learn_alpha', False), # Default False
+            'learn_beta': config['neuron_params'].get('learn_beta', False),
+            'learn_threshold': config['neuron_params'].get('learn_threshold', False),
+            
+        }
+        actual_params = get_filtered_neuron_params(spike_model_class, snn_params)
         model = SpikingUNet(
             encoder=encoder,
             in_channels=config['model']['in_channels'],
             num_classes=config['model']['num_classes'],
             spike_model=spike_model_class,
-            beta=config['neuron_params']['beta'],
-            alpha=config['neuron_params'].get('alpha', None),
-            threshold=config['neuron_params']['threshold']
+            **actual_params
         )
         
     elif model_type == "UNet":

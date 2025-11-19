@@ -19,7 +19,7 @@ model:
 neuron_params:
   spike_model: "snn.Synaptic" 
   beta: 0.9
-  alpha: 0.8
+  alpha: 0.5
   threshold: 1.0
 
 training:
@@ -28,7 +28,7 @@ training:
   learning_rate: 0.001
 
 loss:
-  smooth: 0.0
+  smooth: 0.
   lambda_bce: 1.0
   lambda_class: 0.1
 

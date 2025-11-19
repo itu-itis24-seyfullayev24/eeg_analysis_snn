@@ -1,6 +1,9 @@
 import torch
 import torch.optim as optim
 from src.snn_modeling.utils.loss import DiceBCELoss, FullHybridLoss
+from torch.utils.tensorboard import SummaryWriter
+import os
+from datetime import datetime
 from src.snn_modeling.dataloader.dummy_loader import get_dummy_batch
 from sklearn.metrics import accuracy_score, balanced_accuracy_score
 import snntorch as snn
@@ -36,10 +39,13 @@ def run_training(config, model, device):
         tags=config['logging']['tags'],
         mode="disabled" if config['logging'].get('offline') else "online"
     )
-
+    run_name = f"{config['experiment_name']}_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
+    log_dir = os.path.join("results", run_name)
+    writer = SummaryWriter(log_dir=log_dir)
+    print(f"Initializing TensorBoard: {log_dir}")
     model = model.to(device)
     model.train()
-    wandb.watch(model, log="all", log_freq=100)
+    #wandb.watch(model, log="all", log_freq=100)
     lr = config['training'].get('learning_rate', 1e-3)
     optimizer = optim.AdamW(model.parameters(), lr=lr)
 
@@ -97,28 +103,37 @@ def run_training(config, model, device):
             "Metrics/Balanced_Accuracy": bal_acc
         }
 
-
+        writer.add_scalar("Loss/Train", loss.item(), epoch)
+        writer.add_scalar("Metrics/Dice", dice_score.item(), epoch)
+        writer.add_scalar("Metrics/IoU", iou_score.item(), epoch)
+        writer.add_scalar("Metrics/Precision", precision.item(), epoch)
+        writer.add_scalar("Metrics/Recall", recall.item(), epoch)
+        writer.add_scalar("Metrics/Accuracy", acc, epoch)
+        writer.add_scalar("Metrics/Balanced_Accuracy", bal_acc, epoch)
         if (epoch + 1) % config['training'].get('log_interval', 10) == 0:
             num_samples_to_log = min(4, inputs.shape[1]) 
         
             for sample_idx in range(num_samples_to_log):
 
                 true_class_idx = targets_c[sample_idx].item()
-                img_input = inputs[:, sample_idx, :, :, :].mean(dim=(0, 1)).cpu().detach().numpy()
+                img_input = inputs[:, sample_idx, :, :, :].mean(dim=(0, 1)).cpu().detach().unsqueeze(0).numpy()
 
-                img_target = targets[sample_idx, true_class_idx, :, :].cpu().detach().numpy()
+                img_target = targets[sample_idx, true_class_idx, :, :].cpu().detach().unsqueeze(0).numpy()
     
-                img_pred = val_probs[sample_idx, true_class_idx, :, :].cpu().detach().numpy()
+                img_pred = val_probs[sample_idx, true_class_idx, :, :].cpu().detach().unsqueeze(0).numpy()
 
                 caption_str = f"Sample {sample_idx} - Class {true_class_idx}"
             
                 log_dict[f"Visuals/Sample_{sample_idx}_Input"] = wandb.Image(img_input, caption=caption_str)
                 log_dict[f"Visuals/Sample_{sample_idx}_Target"] = wandb.Image(img_target, caption=caption_str)
                 log_dict[f"Visuals/Sample_{sample_idx}_Pred"] = wandb.Image(img_pred, caption=caption_str)
+                writer.add_image(f"Visuals/Sample_{sample_idx}_Input", img_input, epoch)
+                writer.add_image(f"Visuals/Sample_{sample_idx}_Target", img_target, epoch)
+                writer.add_image(f"Visuals/Sample_{sample_idx}_Pred", img_pred, epoch)
             
-        wandb.log(log_dict)
+        wandb.log(log_dict, step=epoch)
     
     print("--- Sanity Check Complete ---")
     print(f"Final Loss: {loss.item():.6f}")
     wandb.finish()
-    
+    writer.close()
