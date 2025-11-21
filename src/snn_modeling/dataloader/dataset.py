@@ -10,11 +10,21 @@ class TopoMapper:
         self.method = method
         self.grid_size = grid_size
         theta = sensor_coords_df['theta'].values
+        labels = sensor_coords_df['labels'].values
+        if np.max(np.abs(theta)) > 2 * np.pi:
+            print("   Detected DEGREES in coordinates. Converting to Radians.")
+            theta = np.deg2rad(theta)
+        else:
+            print("   Detected RADIANS in coordinates.")
+            theta = theta
         r = sensor_coords_df['radius'].values
-        self.x = r * np.cos(theta)
-        self.y = r * np.sin(theta)
+       
+        x = r * np.cos(theta)
+        y = r * np.sin(theta)
+        x, y= y, x
+        
         self.points = np.column_stack((self.x, self.y))
-        grid_x, grid_y = np.mgrid[-1:1:complex(0, grid_size), -1:1:complex(0, grid_size)]
+        grid_x, grid_y = np.mgrid[-1:1:complex(0, grid_size), -1:1:complex(0, grid_size)] # trick to generate grid_size points without floating point issues
         self.grid_z = (grid_x, grid_y)
         self.mask = (grid_x**2 + grid_y**2) > 1.0
 
