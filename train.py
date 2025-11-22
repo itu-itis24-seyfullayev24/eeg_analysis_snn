@@ -92,12 +92,12 @@ def validate(model, val_loader, criterion, device, config):
 
             # --- 2. Segmentation Metrics (Dice) ---
             # Binarize for visual/overlap metrics
-            pred_masks = (soft_probs > 0.5).long()
+            #pred_masks = (soft_probs > 0.5).long()
             target_masks = (targets > 0.5).long()
             
             # Get stats batch-wise
             tp, fp, fn, tn = smp.metrics.get_stats(
-                pred_masks, target_masks, mode='multilabel', threshold=0.5
+                soft_probs, target_masks, mode='multilabel', threshold=0.3
             )
             tp_tot += tp.sum().item()
             fp_tot += fp.sum().item()
@@ -132,7 +132,7 @@ def log_visuals(model, val_loader, device, writer, epoch, config):
     except StopIteration:
         return # Should not happen
 
-    inputs, targets, labels = inputs.to(device), labels.to(device)
+    inputs, targets, labels = inputs.to(device), targets.to(device), labels.to(device)
     
     # 2. Forward Pass (Standard SNN handling)
     # Permute for time: (Batch, Time, ...) -> (Time, Batch, ...)

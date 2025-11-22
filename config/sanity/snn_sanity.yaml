@@ -39,11 +39,11 @@ training:
 
 loss:
   smooth: 0.
-  lambda_seg: 1.5
-  lambda_bce: 10.0
-  lambda_class: 0.1
-  alpha: 0.7
-  beta: 0.3
+  lambda_seg: 1.0
+  lambda_bce: 5.0
+  lambda_class: 1.0
+  alpha: 0.6
+  beta: 0.4
 
 logging:
   project_name: "snn-encoding-showdown"  # The name of the project on the website
