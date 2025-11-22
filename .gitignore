@@ -4,8 +4,10 @@ __pycache__/
 *.pyc
 .DS_Store
 .ipynb_checkpoints
-data/
+processed_synthetic/
+processed_real/
 logs/
 test.py
 results/
 wandb/
+saved_models/

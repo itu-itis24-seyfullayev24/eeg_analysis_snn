@@ -48,6 +48,7 @@ def build_model(config):
         }
         actual_params = get_filtered_neuron_params(spike_model_class, snn_params)
         model = SpikingUNet(
+            config=config,
             encoder=encoder,
             in_channels=config['model']['in_channels'],
             num_classes=config['model']['num_classes'],

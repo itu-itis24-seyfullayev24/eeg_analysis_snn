@@ -117,6 +117,73 @@ def validate(model, val_loader, criterion, device, config):
 
     return avg_loss, accuracy, balanced_acc, dice_score, iou_score, precision, recall
 
+def log_visuals(model, val_loader, device, writer, epoch, config):
+    """
+    Visualizes Input (Mean Energy), Target (Mask), and Prediction (Heatmap)
+    for a few samples in the validation set.
+    """
+    model.eval()
+    
+    # 1. Grab a single batch from Validation Loader
+    # We create an iterator to just get the first batch
+    try:
+        data_iter = iter(val_loader)
+        inputs, targets, labels = next(data_iter)
+    except StopIteration:
+        return # Should not happen
+
+    inputs, targets, labels = inputs.to(device), labels.to(device)
+    
+    # 2. Forward Pass (Standard SNN handling)
+    # Permute for time: (Batch, Time, ...) -> (Time, Batch, ...)
+    inputs_snn = inputs.permute(1, 0, 2, 3, 4)
+    
+    # Reset State
+    manual_reset(model)
+    
+    with torch.no_grad():
+        outputs = model(inputs_snn) # (Time, Batch, 5, 64, 64)
+        # Average over Time -> (Batch, 5, 64, 64)
+        outputs_avg = torch.mean(outputs, dim=0)
+        probs = torch.sigmoid(outputs_avg)
+
+    # 3. Select Samples to Log (Max 4)
+    num_samples = min(4, inputs.shape[0])
+    
+    for idx in range(num_samples):
+        true_class = labels[idx].item()
+        
+        # A. Input Visualization: Collapse Time (0) and Bands (1) to get "Total Activity"
+        # inputs shape is (Batch, Time, Bands, H, W)
+        img_input = inputs[idx].mean(dim=(0, 1)).cpu().numpy()
+        
+        # Normalize Input for display (0-1)
+        img_input = (img_input - img_input.min()) / (img_input.max() - img_input.min() + 1e-7)
+
+        # B. Target Visualization: The Mask for the True Class
+        # targets shape: (Batch, Classes, H, W)
+        img_target = targets[idx, true_class].cpu().numpy()
+
+        # C. Prediction Visualization: The Probability Map for the True Class
+        # "Did the network fire in the right channel?"
+        img_pred = probs[idx, true_class].cpu().numpy()
+
+        # D. Log to WandB / TensorBoard
+        caption = f"Ep{epoch}_Sample{idx}_Class{true_class}"
+        
+        # TensorBoard expects (C, H, W), so we unsqueeze
+        writer.add_image(f"Vis/Input_{idx}", img_input[None, ...], epoch)
+        writer.add_image(f"Vis/Target_{idx}", img_target[None, ...], epoch)
+        writer.add_image(f"Vis/Pred_{idx}", img_pred[None, ...], epoch)
+        
+        wandb.log({
+            f"Visuals/Sample_{idx}": [
+                wandb.Image(img_input, caption="Input (Avg Activity)"),
+                wandb.Image(img_target, caption=f"Target (Class {true_class})"),
+                wandb.Image(img_pred, caption=f"Prediction (Prob Map)")
+            ]
+        }, step=epoch)
+
 def run_training(config, model, device):
 
     run_name = f"{config['experiment_name']}_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
@@ -154,8 +221,12 @@ def run_training(config, model, device):
 
     loss_fn = FullHybridLoss(
         smooth = config['loss'].get('smooth', 0.0),
+        lambda_seg = config['loss'].get('lambda_seg', 1.0),
         lambda_bce = config['loss'].get('lambda_bce', 1.0),
-        lambda_class = config['loss'].get('lambda_class', 1.0)
+        lambda_class = config['loss'].get('lambda_class', 1.0),
+        alpha = config['loss'].get('alpha', 0.5),
+        beta = config['loss'].get('beta', 0.5),
+
     )
     
     epochs = config['training']['epochs']
@@ -171,7 +242,6 @@ def run_training(config, model, device):
         for batch_idx, (inputs, targets, targets_c) in enumerate(train_loader):
             inputs, targets, targets_c = inputs.to(device), targets.to(device), targets_c.to(device)
             inputs = inputs.permute(1, 0, 2, 3, 4)
-
             manual_reset(model)
             optimizer.zero_grad()
             
@@ -207,15 +277,16 @@ def run_training(config, model, device):
         for k, v in log_dict.items(): writer.add_scalar(k, v, epoch)
  
         if (epoch + 1) % config['logging'].get('log_interval', 10) == 0:
-            pass 
+            print(f"📸 Logging Visuals for Epoch {epoch+1}...")
+            log_visuals(model, val_loader, device, writer, epoch, config) 
 
         if val_acc > best_acc:
             best_acc = val_acc
             best_dice = val_dice
-            save_checkpoint(model, optimizer, epoch, best_acc, best_dice, run_name)
+            #save_checkpoint(model, optimizer, epoch, best_acc, best_dice, "./saved_models/"+run_name+".pt")
         elif val_acc == best_acc and val_dice > best_dice:
             best_dice = val_dice
-            save_checkpoint(model, optimizer, epoch, best_acc, best_dice, run_name)
+            #save_checkpoint(model, optimizer, epoch, best_acc, best_dice, "./saved_models/"+run_name+".pt")
             
     
     print("--- Training Complete ---")

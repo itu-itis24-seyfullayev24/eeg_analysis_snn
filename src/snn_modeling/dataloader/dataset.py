@@ -23,7 +23,7 @@ class TopoMapper:
         y = r * np.sin(theta)
         x, y= y, x
         
-        self.points = np.column_stack((self.x, self.y))
+        self.points = np.column_stack((x, y))
         grid_x, grid_y = np.mgrid[-1:1:complex(0, grid_size), -1:1:complex(0, grid_size)] # trick to generate grid_size points without floating point issues
         self.grid_z = (grid_x, grid_y)
         self.mask = (grid_x**2 + grid_y**2) > 1.0
@@ -85,11 +85,14 @@ class SWEEPDataset(Dataset):
         self.labels = torch.randint(0, self.num_classes, (self.num_samples,))
         self.raw_data = torch.randn(self.num_samples, C, T, Ch)
 
-        for i in range(self.num_samples):
+        for i in tqdm(range(self.num_samples), desc="Synthesizing Signals"):
             label = self.labels[i]
+            noise_sigma = torch.rand(1).item() * 0.4 + 0.8 
+            self.raw_data[i] = torch.randn(C, T, Ch) * noise_sigma
             target_channel = label % Ch
             target_band = label % C
-            self.raw_data[i, target_band, :, target_channel] += self.config['mask'].get('sigma', 5.0)
+            signal_strength = torch.rand(1).item() * self.config['mask'].get('sigma', 5.0) + 3.0
+            self.raw_data[i, target_band, :, target_channel] += signal_strength
         
         if self.transform:
             print("   Applying TopoMapper to entire dataset...")

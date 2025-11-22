@@ -1,6 +1,6 @@
 import torch
 import torch.nn as nn
-from segmentation_models_pytorch.losses import DiceLoss
+from segmentation_models_pytorch.losses import DiceLoss, TverskyLoss
 
 
 class TotalEnergyClassificationLoss(nn.Module):
@@ -15,21 +15,21 @@ class TotalEnergyClassificationLoss(nn.Module):
         return class_loss
 
 class DiceBCELoss(nn.Module):
-    def __init__(self, smooth=0., lambda_bce=1.0):
+    def __init__(self, smooth=0., lambda_seg = 1.0, lambda_bce=1.0, alpha=0.5, beta=0.5):
         super(DiceBCELoss, self).__init__()
         self.bce_loss = nn.BCEWithLogitsLoss()
-        self.dice_loss = DiceLoss(mode="multilabel", smooth=smooth, from_logits=True)
+        self.dice_loss = TverskyLoss(mode="multilabel", smooth=smooth, from_logits=True, alpha=alpha, beta=beta)
         self.lambda_bce = lambda_bce
-
+        self.lambda_seg = lambda_seg
     def forward(self, inputs, targets):
         bce = self.bce_loss(inputs, targets)
         dice = self.dice_loss(inputs, targets)
-        return self.lambda_bce * bce + dice
+        return self.lambda_bce * bce + self.lambda_seg * dice
 
 class FullHybridLoss(nn.Module):
-    def __init__(self, smooth=0., lambda_bce=1., lambda_class=0.1):
+    def __init__(self, smooth=0., lambda_seg=1., lambda_bce=1., lambda_class=0.1, alpha=0.5, beta=0.5):
         super().__init__()
-        self.dice_bce_loss = DiceBCELoss(smooth=smooth, lambda_bce=lambda_bce)
+        self.dice_bce_loss = DiceBCELoss(smooth=smooth, lambda_seg=lambda_seg, lambda_bce=lambda_bce, alpha=alpha, beta=beta)
         self.class_loss = TotalEnergyClassificationLoss()
         self.lambda_class = lambda_class
 
