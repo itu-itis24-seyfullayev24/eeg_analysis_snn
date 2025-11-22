@@ -4,25 +4,25 @@ from ..layers.residual_blocks import SpikingResidualBlock
 from ..layers.stem import StemLayer
 
 class SpikingResNet18Encoder(nn.Module):
-    def __init__(self, in_channels, spike_model=snn.Leaky, **neuron_params):
+    def __init__(self, in_channels, p_drop=0.2, spike_model=snn.Leaky, **neuron_params):
         super(SpikingResNet18Encoder, self).__init__()
         self.stem = StemLayer(in_channels)
         
         self.layer1 = nn.Sequential(
-            SpikingResidualBlock(64, 64, spike_model=spike_model, **neuron_params),
-            SpikingResidualBlock(64, 64, spike_model=spike_model, **neuron_params)
+            SpikingResidualBlock(64, 64, p_drop=p_drop, spike_model=spike_model, **neuron_params),
+            SpikingResidualBlock(64, 64, p_drop=p_drop, spike_model=spike_model, **neuron_params)
         )
         self.layer2 = nn.Sequential(
-            SpikingResidualBlock(64, 128, stride=2, spike_model=spike_model, **neuron_params),
-            SpikingResidualBlock(128, 128, spike_model=spike_model, **neuron_params)
+            SpikingResidualBlock(64, 128, p_drop=p_drop, stride=2, spike_model=spike_model, **neuron_params),
+            SpikingResidualBlock(128, 128, p_drop=p_drop, spike_model=spike_model, **neuron_params)
         )
         self.layer3 = nn.Sequential(
-            SpikingResidualBlock(128, 256, stride=2, spike_model=spike_model, **neuron_params),
-            SpikingResidualBlock(256, 256, spike_model=spike_model, **neuron_params)
+            SpikingResidualBlock(128, 256, p_drop=p_drop, stride=2, spike_model=spike_model, **neuron_params),
+            SpikingResidualBlock(256, 256, p_drop=p_drop, spike_model=spike_model, **neuron_params)
         )
         self.layer4 = nn.Sequential(
-            SpikingResidualBlock(256, 512, stride=2, spike_model=spike_model, **neuron_params),
-            SpikingResidualBlock(512, 512, spike_model=spike_model, **neuron_params)
+            SpikingResidualBlock(256, 512, p_drop=p_drop, stride=2, spike_model=spike_model, **neuron_params),
+            SpikingResidualBlock(512, 512, p_drop=p_drop, spike_model=spike_model, **neuron_params)
         )
     def forward(self, x):
         x = self.stem(x)
@@ -33,33 +33,33 @@ class SpikingResNet18Encoder(nn.Module):
         return s4, [s1,s2,s3]
     
 class SpikingResNet34Encoder(nn.Module):
-    def __init__(self, in_channels, spike_model=snn.Leaky, **neuron_params):
+    def __init__(self, in_channels, p_drop=0.2, spike_model=snn.Leaky, **neuron_params):
         super(SpikingResNet34Encoder, self).__init__()
         self.stem = StemLayer(in_channels)
         
         self.layer1 = nn.Sequential(
-            SpikingResidualBlock(64, 64, spike_model=spike_model, **neuron_params),
-            SpikingResidualBlock(64, 64, spike_model=spike_model, **neuron_params),
-            SpikingResidualBlock(64, 64, spike_model=spike_model, **neuron_params)
+            SpikingResidualBlock(64, 64, p_drop=p_drop, spike_model=spike_model, **neuron_params),
+            SpikingResidualBlock(64, 64, p_drop=p_drop, spike_model=spike_model, **neuron_params),
+            SpikingResidualBlock(64, 64, p_drop=p_drop, spike_model=spike_model, **neuron_params)
         )
         self.layer2 = nn.Sequential(
-            SpikingResidualBlock(64, 128, stride=2, spike_model=spike_model, **neuron_params),
-            SpikingResidualBlock(128, 128, spike_model=spike_model, **neuron_params),
-            SpikingResidualBlock(128, 128, spike_model=spike_model, **neuron_params),
-            SpikingResidualBlock(128, 128, spike_model=spike_model, **neuron_params)
+            SpikingResidualBlock(64, 128, p_drop=p_drop, stride=2, spike_model=spike_model, **neuron_params),
+            SpikingResidualBlock(128, 128, p_drop=p_drop, spike_model=spike_model, **neuron_params),
+            SpikingResidualBlock(128, 128, p_drop=p_drop, spike_model=spike_model, **neuron_params),
+            SpikingResidualBlock(128, 128, p_drop=p_drop, spike_model=spike_model, **neuron_params)
         )
         self.layer3 = nn.Sequential(
-            SpikingResidualBlock(128, 256, stride=2, spike_model=spike_model, **neuron_params),
-            SpikingResidualBlock(256, 256, spike_model=spike_model, **neuron_params),
-            SpikingResidualBlock(256, 256, spike_model=spike_model, **neuron_params),
-            SpikingResidualBlock(256, 256, spike_model=spike_model, **neuron_params),
-            SpikingResidualBlock(256, 256, spike_model=spike_model, **neuron_params),
-            SpikingResidualBlock(256, 256, spike_model=spike_model, **neuron_params)
+            SpikingResidualBlock(128, 256, p_drop=p_drop, stride=2, spike_model=spike_model, **neuron_params),
+            SpikingResidualBlock(256, 256, p_drop=p_drop, spike_model=spike_model, **neuron_params),
+            SpikingResidualBlock(256, 256, p_drop=p_drop, spike_model=spike_model, **neuron_params),
+            SpikingResidualBlock(256, 256, p_drop=p_drop, spike_model=spike_model, **neuron_params),
+            SpikingResidualBlock(256, 256, p_drop=p_drop, spike_model=spike_model, **neuron_params),
+            SpikingResidualBlock(256, 256, p_drop=p_drop, spike_model=spike_model, **neuron_params)
         )
         self.layer4 = nn.Sequential(
-            SpikingResidualBlock(256, 512, stride=2, spike_model=spike_model, **neuron_params),
-            SpikingResidualBlock(512, 512, spike_model=spike_model, **neuron_params),
-            SpikingResidualBlock(512, 512, spike_model=spike_model, **neuron_params)
+            SpikingResidualBlock(256, 512, p_drop=p_drop, stride=2, spike_model=spike_model, **neuron_params),
+            SpikingResidualBlock(512, 512, p_drop=p_drop, spike_model=spike_model, **neuron_params),
+            SpikingResidualBlock(512, 512, p_drop=p_drop, spike_model=spike_model, **neuron_params)
         )
     def forward(self, x):
         x = self.stem(x)

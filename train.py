@@ -3,12 +3,11 @@ import torch.optim as optim
 from torch.utils.data import DataLoader, random_split
 from torch.utils.tensorboard import SummaryWriter
 from src.snn_modeling.utils.loss import FullHybridLoss
-from src.snn_modeling.dataloader.dummy_loader import get_dummy_batch
 from src.snn_modeling.dataloader.dataset import SWEEPDataset
 import os
 from datetime import datetime
 
-from sklearn.metrics import accuracy_score, balanced_accuracy_score
+from sklearn.metrics import balanced_accuracy_score
 import snntorch as snn
 import segmentation_models_pytorch as smp
 import wandb
@@ -21,10 +20,7 @@ warnings.filterwarnings("ignore", category=UserWarning)
 warnings.filterwarnings("ignore", category=FutureWarning)
 warnings.filterwarnings("ignore", category=UndefinedMetricWarning)
 def manual_reset(model):
-    """
-    Recursively reset the hidden state of all SNN layers.
-    This ensures the computation graph is broken between epochs.
-    """
+
     for module in model.modules():
         # Check if the module is a spiking neuron
         if isinstance(module, (snn.Leaky, snn.Synaptic, snn.Alpha)):
@@ -32,56 +28,48 @@ def manual_reset(model):
                 module.reset_mem()
             if hasattr(module, 'reset_hidden'):
                 module.reset_hidden()
-            #if hasattr(module, 'detach_hidden'):
-            #    module.detach_hidden()
 
-def save_checkpoint(model, optimizer, epoch, acc, dice, path="best_sweepnet.pt"):
+
+def save_checkpoint(model, optimizer, scheduler, epoch, acc, dice, path="best_sweepnet.pt"):
     torch.save({
         'epoch': epoch,
         'model_state_dict': model.state_dict(),
         'optimizer_state_dict': optimizer.state_dict(),
+        'scheduler_state_dict': scheduler.state_dict(),
         'accuracy': acc,
         'dice': dice
     }, path)
     print(f"New Record! Saved checkpoint at Epoch {epoch} (Acc: {acc:.4f}, Dice: {dice:.4f})")
 
 def validate(model, val_loader, criterion, device, config):
-    """
-    Validation Loop. Calculates generic metrics over the unseen dataset.
-    """
+
     model.eval()
     val_loss = 0
     correct = 0
     total = 0
     
-    # Accumulators for Sklearn metrics
+
     all_preds = []
     all_targets = []
-    
-    # Accumulators for Segmentation metrics
+
     tp_tot, fp_tot, fn_tot, tn_tot = 0, 0, 0, 0
 
     with torch.no_grad():
         for inputs, targets, labels in val_loader:
             inputs, targets, labels = inputs.to(device), targets.to(device), labels.to(device)
-            
-            # SNN Input Format: (Time, Batch, Channels, H, W)
+
             inputs = inputs.permute(1, 0, 2, 3, 4)
             
-            manual_reset(model) # Crucial: Reset before validation batch
+            manual_reset(model)
             
-            # Forward
-            outputs = model(inputs) # (Time, Batch, 5, H, W)
-            outputs_avg = torch.mean(outputs, dim=0) # (Batch, 5, H, W)
+            outputs = model(inputs)
+            outputs_avg = torch.mean(outputs, dim=0)
             
-            # Loss
             loss = criterion(outputs_avg, targets, labels)
             val_loss += loss.item()
-            
-            # --- 1. Classification Metrics (Energy) ---
-            # Use Soft Probabilities (Sigmoid) for Energy calculation
+    
             soft_probs = torch.sigmoid(outputs_avg)
-            energy = torch.sum(soft_probs, dim=(2, 3)) # Sum over H, W -> (Batch, 5)
+            energy = torch.sum(soft_probs, dim=(2, 3))
             preds = torch.argmax(energy, dim=1)
             
             correct += (preds == labels).sum().item()
@@ -90,12 +78,9 @@ def validate(model, val_loader, criterion, device, config):
             all_preds.extend(preds.cpu().numpy())
             all_targets.extend(labels.cpu().numpy())
 
-            # --- 2. Segmentation Metrics (Dice) ---
-            # Binarize for visual/overlap metrics
-            #pred_masks = (soft_probs > 0.5).long()
             target_masks = (targets > 0.5).long()
             
-            # Get stats batch-wise
+
             tp, fp, fn, tn = smp.metrics.get_stats(
                 soft_probs, target_masks, mode='multilabel', threshold=0.3
             )
@@ -104,7 +89,6 @@ def validate(model, val_loader, criterion, device, config):
             fn_tot += fn.sum().item()
             tn_tot += tn.sum().item()
 
-    # --- Compute Epoch Metrics ---
     avg_loss = val_loss / len(val_loader)
     accuracy = correct / total
     balanced_acc = balanced_accuracy_score(all_targets, all_preds)
@@ -118,60 +102,40 @@ def validate(model, val_loader, criterion, device, config):
     return avg_loss, accuracy, balanced_acc, dice_score, iou_score, precision, recall
 
 def log_visuals(model, val_loader, device, writer, epoch, config):
-    """
-    Visualizes Input (Mean Energy), Target (Mask), and Prediction (Heatmap)
-    for a few samples in the validation set.
-    """
+
     model.eval()
     
-    # 1. Grab a single batch from Validation Loader
-    # We create an iterator to just get the first batch
     try:
         data_iter = iter(val_loader)
         inputs, targets, labels = next(data_iter)
     except StopIteration:
-        return # Should not happen
+        return 
 
     inputs, targets, labels = inputs.to(device), targets.to(device), labels.to(device)
-    
-    # 2. Forward Pass (Standard SNN handling)
-    # Permute for time: (Batch, Time, ...) -> (Time, Batch, ...)
     inputs_snn = inputs.permute(1, 0, 2, 3, 4)
     
-    # Reset State
     manual_reset(model)
     
     with torch.no_grad():
-        outputs = model(inputs_snn) # (Time, Batch, 5, 64, 64)
-        # Average over Time -> (Batch, 5, 64, 64)
+        outputs = model(inputs_snn)
+
         outputs_avg = torch.mean(outputs, dim=0)
         probs = torch.sigmoid(outputs_avg)
 
-    # 3. Select Samples to Log (Max 4)
     num_samples = min(4, inputs.shape[0])
     
     for idx in range(num_samples):
         true_class = labels[idx].item()
-        
-        # A. Input Visualization: Collapse Time (0) and Bands (1) to get "Total Activity"
-        # inputs shape is (Batch, Time, Bands, H, W)
+    
         img_input = inputs[idx].mean(dim=(0, 1)).cpu().numpy()
         
-        # Normalize Input for display (0-1)
         img_input = (img_input - img_input.min()) / (img_input.max() - img_input.min() + 1e-7)
 
-        # B. Target Visualization: The Mask for the True Class
-        # targets shape: (Batch, Classes, H, W)
         img_target = targets[idx, true_class].cpu().numpy()
-
-        # C. Prediction Visualization: The Probability Map for the True Class
-        # "Did the network fire in the right channel?"
         img_pred = probs[idx, true_class].cpu().numpy()
 
-        # D. Log to WandB / TensorBoard
         caption = f"Ep{epoch}_Sample{idx}_Class{true_class}"
         
-        # TensorBoard expects (C, H, W), so we unsqueeze
         writer.add_image(f"Vis/Input_{idx}", img_input[None, ...], epoch)
         writer.add_image(f"Vis/Target_{idx}", img_target[None, ...], epoch)
         writer.add_image(f"Vis/Pred_{idx}", img_pred[None, ...], epoch)
@@ -184,9 +148,11 @@ def log_visuals(model, val_loader, device, writer, epoch, config):
             ]
         }, step=epoch)
 
-def run_training(config, model, device):
+def run_training(config, model, device, checkpoint=None):
 
     run_name = f"{config['experiment_name']}_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
+    checkpoint_dir = os.path.join("saved_models", run_name)
+    os.makedirs(checkpoint_dir, exist_ok=True)
     wandb.init(
         project=config['logging']['project_name'],
         name=config['logging']['run_name'],
@@ -212,12 +178,37 @@ def run_training(config, model, device):
     val_loader = DataLoader(val_set, batch_size=config['training']['batch_size'], shuffle=False, num_workers=config['data'].get('num_workers', 0))
     print(f"Data Loaded: {len(train_set)} Train | {len(val_set)} Val")
 
-    model = model.to(device)
-    model.train()
- 
     lr = config['training'].get('learning_rate', 1e-3)
-    optimizer = optim.AdamW(model.parameters(), lr=lr, betas=(0.9, 0.999), weight_decay=config['training'].get('weight_decay', 1e-5))
-    scheduler = optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=50, eta_min=1e-5)
+    base_params = []
+    time_params = []
+
+    for name, param in model.named_parameters():
+        if 'alpha' in name or 'beta' in name or 'slope' in name:
+            time_params.append(param)
+        else:
+            base_params.append(param)
+
+
+    optimizer = optim.AdamW([
+        {'params': base_params, 'lr': config['training']['learning_rate']},
+        {'params': time_params, 'lr': config['training']['learning_rate'] * 0.01} 
+    ], weight_decay=config['training']['weight_decay'], betas=(0.9, 0.999))
+
+    start_epoch = 0
+    best_acc = 0.0
+    best_dice = 0.0
+
+    scheduler = optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=config['training']['epochs'], eta_min=1e-6)
+    model = model.to(device)
+
+    if checkpoint is not None:
+        model.load_state_dict(checkpoint['model_state_dict'])
+        optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
+        scheduler.load_state_dict(checkpoint['scheduler_state_dict'])
+        start_epoch = checkpoint['epoch'] + 1
+        best_acc = checkpoint['accuracy']
+        best_dice = checkpoint['dice']
+        print(f"Resuming training from epoch {start_epoch}...")
 
     loss_fn = FullHybridLoss(
         smooth = config['loss'].get('smooth', 0.0),
@@ -230,11 +221,9 @@ def run_training(config, model, device):
     )
     
     epochs = config['training']['epochs']
-    best_acc = 0.0
-    best_dice = 0.0
+    
 
-
-    for epoch in range(epochs):
+    for epoch in range(start_epoch, epochs):
         
         model.train()
         train_loss = 0.0
@@ -258,7 +247,7 @@ def run_training(config, model, device):
 
         scheduler.step()
         current_lr = scheduler.get_last_lr()[0]
-        print(f"Epoch {epoch+1} | LR: {current_lr:.2e} | "
+        print(f"Epoch {epoch} | LR: {current_lr:.2e} | "
               f"Train Loss: {avg_train_loss:.4f} | Val Loss: {val_loss:.4f} | "
               f"Val Acc: {val_acc:.4f} | Dice: {val_dice:.4f}")
         
@@ -277,16 +266,16 @@ def run_training(config, model, device):
         for k, v in log_dict.items(): writer.add_scalar(k, v, epoch)
  
         if (epoch + 1) % config['logging'].get('log_interval', 10) == 0:
-            print(f"📸 Logging Visuals for Epoch {epoch+1}...")
+            print(f"Logging Visuals for Epoch {epoch}...")
             log_visuals(model, val_loader, device, writer, epoch, config) 
 
         if val_acc > best_acc:
             best_acc = val_acc
             best_dice = val_dice
-            #save_checkpoint(model, optimizer, epoch, best_acc, best_dice, "./saved_models/"+run_name+".pt")
+            save_checkpoint(model, optimizer, scheduler, epoch, best_acc, best_dice, f"{checkpoint_dir}/checkpoint_{epoch:03d}_{best_acc:.4f}_{best_dice:.4f}.pt")
         elif val_acc == best_acc and val_dice > best_dice:
             best_dice = val_dice
-            #save_checkpoint(model, optimizer, epoch, best_acc, best_dice, "./saved_models/"+run_name+".pt")
+            save_checkpoint(model, optimizer, scheduler, epoch, best_acc, best_dice, f"{checkpoint_dir}/checkpoint_{epoch:03d}_{best_acc:.4f}_{best_dice:.4f}.pt")
             
     
     print("--- Training Complete ---")

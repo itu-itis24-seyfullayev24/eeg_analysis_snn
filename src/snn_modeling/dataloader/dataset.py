@@ -29,14 +29,7 @@ class TopoMapper:
         self.mask = (grid_x**2 + grid_y**2) > 1.0
 
     def transform(self, tensor):
-        """
-        Args:
-            tensor: Shape (5, Time, 14) 
-                    (Bands, Time Steps, Sensors)
-            
-        Returns:
-            torch.Tensor: Shape (Time, 5, 64, 64)
-        """
+
         if isinstance(tensor, torch.Tensor):
             data = tensor.numpy()
         else:
@@ -100,16 +93,12 @@ class SWEEPDataset(Dataset):
             print("   Applying TopoMapper to entire dataset...")
             transformed_list = []
             for i in tqdm(range(self.num_samples), desc="Topographic Mapping"):
-                # Transform returns (Time, Bands, H, W)
-                # We process one sample at a time
                 vid = self.transform(self.raw_data[i]) 
                 vid = torch.clamp(vid, 0.0, 1.0) 
                 transformed_list.append(vid)
-            
-            # Stack into master tensor: (N, Time, Bands, H, W)
+
             self.data = torch.stack(transformed_list)
         else:
-            # Fallback if no transform provided
             self.data = self.raw_data
         self._generate_prototypes()
         
@@ -120,7 +109,7 @@ class SWEEPDataset(Dataset):
         for c in range(self.num_classes):
             class_data = self.data[self.labels == c]
             if len(class_data) == 0:
-                print(f"   ⚠️ Warning: Class {c} has no samples. Using zeros.")
+                print(f"   Warning: Class {c} has no samples. Using zeros.")
                 prototype = torch.zeros(self.grid_size, self.grid_size)
             else:
                 prototype = class_data.mean(dim=(0, 1, 2))
@@ -141,7 +130,7 @@ class SWEEPDataset(Dataset):
         """Saves data, labels, and prototypes to .npy files."""
         os.makedirs(folder_path, exist_ok=True)
         
-        print(f"💾 Saving dataset to {folder_path}...")
+        print(f"Saving dataset to {folder_path}...")
         np.save(os.path.join(folder_path, "data.npy"), self.data.cpu().numpy())
         np.save(os.path.join(folder_path, "labels.npy"), self.labels.cpu().numpy())
         np.save(os.path.join(folder_path, "prototypes.npy"), self.prototypes.cpu().numpy())
@@ -149,11 +138,9 @@ class SWEEPDataset(Dataset):
     
     def load_from_disk(self, folder_path):
         """Loads data, labels, and prototypes from .npy files."""
-        print(f"📂 Loading dataset from {folder_path}...")
+        print(f"Loading dataset from {folder_path}...")
         
         try:
-            # Load as memory-mapped for speed (optional, but good for large data)
-            # Use .copy() if you need to write to it, otherwise keep as read-only
             self.data = torch.tensor(np.load(os.path.join(folder_path, "data.npy")), dtype=torch.float32)
             self.labels = torch.tensor(np.load(os.path.join(folder_path, "labels.npy")), dtype=torch.long)
             self.prototypes = torch.tensor(np.load(os.path.join(folder_path, "prototypes.npy")), dtype=torch.float32)

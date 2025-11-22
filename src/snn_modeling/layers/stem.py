@@ -22,11 +22,12 @@ class ClassifierHead(nn.Module):
         return self.head(x)
     
 class BottleneckBlock(nn.Module):
-    def __init__(self, in_channels, spike_model=snn.Leaky, **neuron_params):
+    def __init__(self, in_channels, p_drop=0.2, spike_model=snn.Leaky, **neuron_params):
         super(BottleneckBlock, self).__init__()
         self.bottleneck = nn.Sequential(
-            ConvBnSpiking(in_channels, in_channels*2, kernel_size=1, spike_model=spike_model, **neuron_params),
-            ConvBnSpiking(in_channels*2, in_channels, kernel_size=1, spike_model=spike_model, **neuron_params),
+            ConvBnSpiking(in_channels, in_channels//2, kernel_size=3, padding=1, spike_model=spike_model, **neuron_params),
+            nn.Dropout2d(p=p_drop),
+            ConvBnSpiking(in_channels//2, in_channels, kernel_size=3, padding=1, spike_model=spike_model, **neuron_params),
         )
     def forward(self, x):
         return self.bottleneck(x)
