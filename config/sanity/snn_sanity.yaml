@@ -4,7 +4,7 @@ description: "Spiking ResNet-18 U-Net with standard LIF neurons and Rate encodin
 data:
   dataset_path: "data/processed_synthetic"
   coords_path: "data/coords.csv"
-  encoding_method: "rate"
+  encoding_method: "direct"
   num_timesteps: 16
   grid_size:  64
   freq_bands: 5
@@ -21,29 +21,29 @@ model:
   type: "SpikingUNet"
   encoder_type: "ResNet18"
   in_channels: 5
-  num_classes: 3
+  num_classes: 2
 
 neuron_params:
   spike_model: "snn.Leaky" 
   beta: 0.9
   alpha: 0.5
   threshold: 1.0
-  learn_alpha: true
-  learn_beta: true
+  learn_alpha: false
+  learn_beta: false
 
 training:
   epochs: 100
   batch_size: 32
-  learning_rate: 0.001
+  learning_rate: 0.0001
   weight_decay: 0.05
 
 loss:
   smooth: 0.
   lambda_seg: 1.0
-  lambda_bce: 5.0
-  lambda_class: 1.0
-  alpha: 0.6
-  beta: 0.4
+  lambda_bce: 1.5
+  lambda_class: 0.1
+  alpha: 0.8
+  beta: 0.2
 
 logging:
   project_name: "snn-encoding-showdown"  # The name of the project on the website

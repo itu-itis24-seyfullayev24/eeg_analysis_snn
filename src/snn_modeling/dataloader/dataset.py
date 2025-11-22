@@ -93,7 +93,9 @@ class SWEEPDataset(Dataset):
             target_band = label % C
             signal_strength = torch.rand(1).item() * self.config['mask'].get('sigma', 5.0) + 3.0
             self.raw_data[i, target_band, :, target_channel] += signal_strength
-        
+        d_min = self.raw_data.min()
+        d_max = self.raw_data.max()
+        self.raw_data = (self.raw_data - d_min) / (d_max - d_min)
         if self.transform:
             print("   Applying TopoMapper to entire dataset...")
             transformed_list = []
@@ -101,6 +103,7 @@ class SWEEPDataset(Dataset):
                 # Transform returns (Time, Bands, H, W)
                 # We process one sample at a time
                 vid = self.transform(self.raw_data[i]) 
+                vid = torch.clamp(vid, 0.0, 1.0) 
                 transformed_list.append(vid)
             
             # Stack into master tensor: (N, Time, Bands, H, W)

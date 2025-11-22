@@ -19,7 +19,7 @@ class SpikingUNet(nn.Module):
         self.classifier = ClassifierHead(64, num_classes)
 
     def forward(self, x):
-        
+        x = 0.25*x # Scale input to [0, 0.25] for better spike generation
         if self.encoding == 'latency':
             x_static = x.mean(dim=0)
             x = spikegen.latency(x_static, num_steps=self.num_timesteps, tau=5, threshold=0.01, clip=True)
