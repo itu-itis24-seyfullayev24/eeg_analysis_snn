@@ -1,2 +1,3 @@
-.vscode
-.venv
+# Created by venv; see https://docs.python.org/3/library/venv.html
+data_process/eeg_raw
+data_process/venv
