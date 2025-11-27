@@ -14,3 +14,4 @@ test.py
 results/
 wandb/
 saved_models/
+.idea/
