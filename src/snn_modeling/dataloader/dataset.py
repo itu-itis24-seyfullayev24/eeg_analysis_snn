@@ -132,7 +132,9 @@ class SWEEPDataset(Dataset):
     def __getitem__(self, idx):
         video = self.data[idx]
         label_idx = self.labels[idx]
-
+        video = np.maximum(video, 0.0) 
+        v_max = video.max() + 1e-7
+        video = video / v_max
         target_volume = torch.zeros(self.num_classes, self.grid_size, self.grid_size)
  
         target_volume[label_idx] = self.prototypes[label_idx]

@@ -3,7 +3,7 @@ import numpy as np
 import os
 import pandas as pd
 from tqdm import tqdm
-
+import scipy.signal
 from data_process.data_loader import DatasetReader
 from data_process.wavelet import WaveletModule
 from src.snn_modeling.dataloader.dataset import TopoMapper
@@ -65,20 +65,22 @@ def run_data_setup(config=None):
                     
                 for window in windows:
                     # Pipeline logic is duplicated, but keeps code clean
-                    w_mean = torch.mean(window)
-                    w_std = torch.std(window)
-                    window = torch.clamp(window, w_mean - 6*w_std, w_mean + 6*w_std)
+                    window = scipy.signal.detrend(window, axis=-1)
+                    w_mean = np.mean(window)
+                    w_std = np.std(window)
+                    window = np.clip(window, w_mean - 6*w_std, w_mean + 6*w_std)
+                    window = torch.tensor(window, dtype=torch.float32)
                     
                     raw_power = wavelet.wavelet(window)
                     band_feats = wavelet.bandpowers_wavelet(raw_power)
                     feats_32 = wavelet.resample_time(band_feats)
                     feats_permuted = feats_32.permute(1, 2, 0)
                     video = topo(feats_permuted)
-                    
+                    video = torch.clamp(video, min=0.0)
                     all_videos.append(video.numpy())
                     all_labels.append(emotion_map[emotion_id])
                 continue # Go to next file  
-            
+
             _, raw_id = dataset_reader[i]
   
             
@@ -101,10 +103,11 @@ def run_data_setup(config=None):
             
             for w_idx in range(len(windows)):
                 window = windows[w_idx]
-                w_mean = torch.mean(window)
-                w_std = torch.std(window)
-                limit = 6.0 * w_std # By Chebyshev inequality, covers > 97% data
-                window = torch.clamp(window, w_mean - limit, w_mean + limit)
+                window = scipy.signal.detrend(window, axis=-1)
+                w_mean = np.mean(window)
+                w_std = np.std(window)
+                window = np.clip(window, w_mean - 6*w_std, w_mean + 6*w_std)
+                window = torch.tensor(window, dtype=torch.float32)
  
                 raw_power = wavelet.wavelet(window)
    
@@ -115,7 +118,7 @@ def run_data_setup(config=None):
                 feats_permuted = feats_32.permute(1, 2, 0)
                 
                 video = topo(feats_permuted)
-                
+                video = torch.clamp(video, min=0.0)
                 all_videos.append(video.numpy()) 
                 all_labels.append(label_idx)
 
@@ -132,11 +135,6 @@ def run_data_setup(config=None):
     labels_np = np.array(all_labels) 
     
     print(f"Final Shape: {data_np.shape}")
-    
-    print("Normalizing to [0, 1]...")
-    d_min = data_np.min()
-    d_max = data_np.max()
-    data_np = (data_np - d_min) / (d_max - d_min)
     
     print(f"Saving to {OUTPUT_FOLDER}...")
     np.save(os.path.join(OUTPUT_FOLDER, "data.npy"), data_np)

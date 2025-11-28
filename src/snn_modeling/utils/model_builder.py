@@ -43,7 +43,7 @@ def build_model(config):
             'threshold': config['neuron_params'].get('threshold', 1.),
             'learn_alpha': config['neuron_params'].get('learn_alpha', False), # Default False
             'learn_beta': config['neuron_params'].get('learn_beta', False),
-            'learn_threshold': config['neuron_params'].get('learn_threshold', False),
+            'learn_threshold': config['neuron_params'].get('learn_threshold', True),
             'spike_grad': snn.surrogate.atan(alpha=config['neuron_params'].get('spike_grad_alpha', 2.0))
             
         }
