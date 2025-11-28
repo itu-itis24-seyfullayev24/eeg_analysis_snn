@@ -14,6 +14,7 @@ import wandb
 import warnings
 from sklearn.exceptions import UndefinedMetricWarning
 import numpy as np
+from torch.amp import autocast, GradScaler
 # Ignore the specific sklearn warning about missing classes
 warnings.filterwarnings("ignore", message="y_pred contains classes not in y_true")
 warnings.filterwarnings("ignore", message="A single label was found in 'y_true' and 'y_pred'. For the confusion matrix to have the correct shape, use the 'labels' parameter to pass all known labels.")
@@ -159,7 +160,9 @@ def run_training(config, model, device, checkpoint=None):
         name=config['logging']['run_name'],
         config=config,
         tags=config['logging']['tags'],
-        mode="disabled" if config['logging'].get('offline') else "online"
+        mode="disabled" if config['logging'].get('offline') else "online",
+
+        settings=wandb.Settings(_disable_stats=True, _disable_meta=True) 
     )
     
     log_dir = os.path.join("results", run_name)
@@ -168,7 +171,7 @@ def run_training(config, model, device, checkpoint=None):
 
     data_path = os.path.join(config['data']['dataset_path'], "data.npy")
     label_path = os.path.join(config['data']['dataset_path'], "labels.npy")
-    
+    scaler = GradScaler()
     # Load as Tensor
     all_data = torch.tensor(np.load(data_path), dtype=torch.float32)
     all_labels = torch.tensor(np.load(label_path), dtype=torch.long)
@@ -215,17 +218,21 @@ def run_training(config, model, device, checkpoint=None):
     lr = config['training'].get('learning_rate', 1e-3)
     base_params = []
     time_params = []
+    threshold_params = []
 
     for name, param in model.named_parameters():
         if 'alpha' in name or 'beta' in name or 'slope' in name:
             time_params.append(param)
+        elif 'threshold' in name:
+            threshold_params.append(param)
         else:
             base_params.append(param)
 
 
     optimizer = optim.AdamW([
         {'params': base_params, 'lr': lr},
-        {'params': time_params, 'lr': lr * 0.01} 
+        {'params': time_params, 'lr': lr * 0.01},
+        {'params': threshold_params, 'lr': lr * 100} 
     ], weight_decay=config['training']['weight_decay'], betas=(0.9, 0.999))
 
     start_epoch = 0
@@ -271,13 +278,14 @@ def run_training(config, model, device, checkpoint=None):
             inputs = inputs.permute(1, 0, 2, 3, 4)
             manual_reset(model)
             optimizer.zero_grad()
-            
-            outputs = model(inputs)
-            outputs_agg = torch.mean(outputs, dim=0)
+            with autocast(device_type="cuda"):
+                outputs = model(inputs)
+                outputs_agg = torch.mean(outputs, dim=0)
 
-            loss = loss_fn(outputs_agg, targets, targets_c)
-            loss.backward()
-            optimizer.step()
+                loss = loss_fn(outputs_agg, targets, targets_c)
+            scaler.scale(loss).backward()
+            scaler.step(optimizer)
+            scaler.update()
             train_loss += loss.item()
 
         avg_train_loss = train_loss / len(train_loader)
@@ -287,7 +295,8 @@ def run_training(config, model, device, checkpoint=None):
         current_lr = scheduler.get_last_lr()[0]
         print(f"Epoch {epoch} | LR: {current_lr:.2e} | "
               f"Train Loss: {avg_train_loss:.4f} | Val Loss: {val_loss:.4f} | "
-              f"Val Acc: {val_acc:.4f} | Dice: {val_dice:.4f}")
+              f"Val Acc: {val_acc:.4f} | Dice: {val_dice:.4f} | "
+              f"Val Pre: {val_pre:.4f} | Val Rec: {val_rec:.4f}")
         
         log_dict = {
             "Train/Loss": avg_train_loss,
@@ -305,7 +314,7 @@ def run_training(config, model, device, checkpoint=None):
  
         if (epoch + 1) % config['logging'].get('log_interval', 10) == 0:
             print(f"Logging Visuals for Epoch {epoch}...")
-            log_visuals(model, val_loader, device, writer, epoch, config) 
+            log_visuals(model, val_loader, device, writer, epoch) 
 
         if val_acc > best_acc:
             best_acc = val_acc
