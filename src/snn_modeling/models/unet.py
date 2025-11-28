@@ -20,23 +20,35 @@ class SpikingUNet(nn.Module):
 
     def forward(self, x):
          # Scale input to [0, 0.25] for better spike generation
+        
         if self.encoding == 'latency':
             x_static = x.mean(dim=0)
             x = spikegen.latency(x_static, num_steps=self.num_timesteps, tau=5, threshold=0.01, normalize=True, clip=True)
+            #x = x * 4.0
         elif self.encoding == 'rate': # Converges to Poisson encoding
-            x = 0.25*x
+            
             rand_map = torch.rand_like(x) 
             x = (x > rand_map).float()
         elif self.encoding == 'direct':
-            x = 0.25*x
+           
             pass
+        else:
+            raise ValueError(f"Unknown encoding method: {self.encoding}")
+        target_peak = 1.5 
+
         T,B,C,H,W = x.shape
 
         x = x.reshape(T*B, C, H, W)
         x = self.encoder.stem(x)
         _,C_stem,H_stem,W_stem = x.shape
         x = x.reshape(T, B, C_stem, H_stem, W_stem)
+        flat_x = x.view(x.shape[0], -1)
+        max_val, _ = flat_x.max(dim=1)
+        scale_factor = target_peak / (max_val + 1e-5)
+        scale_factor = scale_factor.view(-1, 1, 1, 1, 1)
+        x = x * scale_factor
 
+         # Process each time step individually through the UNet
         logit_rec = []
         for step in range(self.num_timesteps):
             x_step = x[step, :, :, :, :]

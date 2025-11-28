@@ -3,7 +3,7 @@ description: "Spiking ResNet-18 U-Net with standard LIF neurons and Rate encodin
 
 data:
   dataset_path: "data/eeg_emotions_processed"
-  encoding_method: "direct"
+  encoding_method: "latency"
   num_timesteps: 32
   window_size:  256
   sampling_rate: 256
@@ -33,15 +33,15 @@ neuron_params:
   alpha: 0.5
   threshold: 1.0
   learn_threshold: false
-  learn_alpha: false
-  learn_beta: false
-  spike_grad_alpha: 2.0
+  learn_alpha: true
+  learn_beta: true
+  spike_grad_alpha: 0.5
 
 training:
   epochs: 100
   batch_size: 16
   learning_rate: 0.0001
-  weight_decay: 0.05
+  weight_decay: 0.0
 
 loss:
   smooth: 0.

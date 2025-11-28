@@ -15,7 +15,7 @@ import warnings
 from sklearn.exceptions import UndefinedMetricWarning
 import numpy as np
 from torch.amp import autocast, GradScaler
-
+from tqdm import tqdm
 
 # Ignore the specific sklearn warning about missing classes
 warnings.filterwarnings("ignore", message="y_pred contains classes not in y_true")
@@ -152,6 +152,68 @@ def log_visuals(model, val_loader, device, writer, epoch):
             ]
         }, step=epoch)
 
+def measure_internal_voltages(model, loader, device):
+    """
+    Runs one batch and probes the membrane potential at different depths.
+    Checks for the 'Avalanche Effect'.
+    """
+    print("\n⚡ VOLTAGE METER: Probing Network Depth...")
+    
+    # 1. Prepare One Batch
+    model.eval()
+    try:
+        inputs, _, _ = next(iter(loader))
+    except StopIteration:
+        return
+        
+    inputs = inputs.to(device)
+    # Permute for SNN (Batch, Time) -> (Time, Batch) if needed
+    if inputs.dim() == 5:
+        inputs = inputs.permute(1, 0, 2, 3, 4) # (T, B, C, H, W)
+        
+    # 2. Reset and Run
+    manual_reset(model)
+    with torch.no_grad():
+        # We assume the model runs and stores 'mem' in the layers
+        # If using snnTorch with init_hidden=True, .mem attribute holds the state
+        _ = model(inputs)
+
+    # 3. PROBE THE LAYERS
+    # We look at the 'spike' layer in each ResNet block to see the accumulated voltage
+    # Adjust 'spike' to whatever your neuron layer is named in your Block class
+    probes = {
+        "Layer 1 (Start)": model.encoder.layer1[0].spike,
+        "Layer 2 (Shallow)": model.encoder.layer2[0].spike,
+        "Layer 3 (Deep)": model.encoder.layer3[0].spike,
+        "Layer 4 (Deepest)": model.encoder.layer4[0].spike,
+        "Bottleneck": model.bottleneck.bottleneck[2].spike
+    }
+
+    print(f"{'Layer':<20} | {'Max Voltage':<12} | {'Mean Voltage':<12} | {'Status'}")
+    print("-" * 60)
+
+    for name, layer in probes.items():
+        # Check if mem exists
+        if hasattr(layer, 'mem'):
+            # mem might be a list (record) or tensor. We want the tensor.
+            mem = layer.mem
+            if isinstance(mem, list): mem = mem[-1] # Get last timestep if list
+            
+            v_max = mem.max().item()
+            v_mean = mem.mean().item()
+            
+            # Diagnosis logic
+            status = "✅ Healthy"
+            if v_max > 10.0: status = "⚠️ High"
+            if v_max > 100.0: status = "🔥 EXPLOSION"
+            if v_max < 0.1: status = "❄️ Dead"
+            
+            print(f"{name:<20} | {v_max:<12.4f} | {v_mean:<12.4f} | {status}")
+        else:
+            print(f"{name:<20} | {'N/A':<12} | {'N/A':<12} | Not found")
+    print("-" * 60)
+    print("\n")
+
 def run_training(config, model, device, checkpoint=None):
 
     run_name = f"{config['experiment_name']}_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
@@ -270,13 +332,13 @@ def run_training(config, model, device, checkpoint=None):
     except Exception as e:
         print(f"⚠️ Could not compile model: {e}. Running in standard mode.")
     
-    
+    measure_internal_voltages(model, train_loader, device)
     for epoch in range(start_epoch, epochs):
         
         model.train()
         train_loss = 0.0
-
-        for _, (inputs, targets, targets_c) in enumerate(train_loader):
+        train_loop = tqdm(train_loader, desc=f"Epoch {epoch+1}/{config['training']['epochs']}", unit="batch")
+        for _, (inputs, targets, targets_c) in enumerate(train_loop):
 
             inputs, targets, targets_c = inputs.to(device), targets.to(device), targets_c.to(device)
             inputs = inputs.permute(1, 0, 2, 3, 4)
@@ -291,6 +353,7 @@ def run_training(config, model, device, checkpoint=None):
             scaler.step(optimizer)
             scaler.update()
             train_loss += loss.item()
+            train_loop.set_postfix(loss=loss.item())
 
         avg_train_loss = train_loss / len(train_loader)
         val_loss, val_acc, val_bal_acc, val_dice, val_iou, val_pre, val_rec = validate(model, val_loader, loss_fn, device)

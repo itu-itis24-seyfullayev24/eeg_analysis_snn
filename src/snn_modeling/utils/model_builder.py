@@ -38,13 +38,13 @@ def build_model(config):
             raise ValueError(f"Unknown encoder type: {config['model']['encoder_type']}")
         spike_model_class = SPIKE_MODEL_MAP[config['neuron_params']['spike_model']]
         snn_params = {
-            'alpha': config['neuron_params'].get('alpha', 0.8),
+            'alpha': config['neuron_params'].get('alpha', 0.5),
             'beta': config['neuron_params'].get('beta', 0.9),
             'threshold': config['neuron_params'].get('threshold', 1.),
-            'learn_alpha': config['neuron_params'].get('learn_alpha', False), # Default False
-            'learn_beta': config['neuron_params'].get('learn_beta', False),
+            'learn_alpha': config['neuron_params'].get('learn_alpha', True),
+            'learn_beta': config['neuron_params'].get('learn_beta', True),
             'learn_threshold': config['neuron_params'].get('learn_threshold', True),
-            'spike_grad': snn.surrogate.atan(alpha=config['neuron_params'].get('spike_grad_alpha', 2.0))
+            'spike_grad': snn.surrogate.atan(alpha=config['neuron_params'].get('spike_grad_alpha', 0.5))
             
         }
         actual_params = get_filtered_neuron_params(spike_model_class, snn_params)
