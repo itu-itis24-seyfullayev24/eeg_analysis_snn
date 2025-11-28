@@ -326,11 +326,7 @@ def run_training(config, model, device, checkpoint=None):
     )
     
     epochs = config['training']['epochs']
-    try:
-        print("⚡ Compiling model with torch.compile...")
-        model = torch.compile(model)
-    except Exception as e:
-        print(f"⚠️ Could not compile model: {e}. Running in standard mode.")
+
     
     measure_internal_voltages(model, train_loader, device)
     for epoch in range(start_epoch, epochs):
