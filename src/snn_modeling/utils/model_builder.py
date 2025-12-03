@@ -54,10 +54,9 @@ def build_model(config):
             'learn_threshold': config['neuron_params'].get('learn_threshold', False),
             'learn_slope': config['neuron_params'].get('learn_slope', False),
             'reset_mechanism': config['neuron_params'].get('reset_mechanism', 'zero')
-            
-            
         }
         actual_params = get_filtered_neuron_params(spike_model_class, snn_params)
+       
         model = SpikingUNet(
             config=config,
             encoder=encoder,

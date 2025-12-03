@@ -127,7 +127,7 @@ def run_data_setup(config=None):
             total_collected += count_added
                 
         except Exception as e:
-            print(f"⚠️ Error processing file {i}: {e}")
+            print(f"Error processing file {i}: {e}")
             continue
     
     print("Stacking data...")

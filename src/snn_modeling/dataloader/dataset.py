@@ -7,8 +7,8 @@ from scipy.interpolate import griddata, RBFInterpolator
 from tqdm import tqdm 
 
 class TopoMapper:
-    def __init__(self, sensor_coords_df, grid_size=64, method='thin_plate_spline'): # Using Azimuthal Equidistant Projection
-        self.method = method
+    def __init__(self, sensor_coords_df, grid_size=64, sigma=0.1): # Using Azimuthal Equidistant Projection
+        self.sigma = sigma
         self.grid_size = grid_size
         theta = sensor_coords_df['theta'].values
         if np.max(np.abs(theta)) > 2 * np.pi:
@@ -27,8 +27,10 @@ class TopoMapper:
         grid_x, grid_y = np.mgrid[-1:1:complex(0, grid_size), -1:1:complex(0, grid_size)] # trick to generate grid_size points without floating point issues
         self.target_points = np.column_stack((grid_x.ravel(), grid_y.ravel()))
         self.mask_indices = (self.target_points[:, 0]**2 + self.target_points[:, 1]**2) > 1.0
-
-        self.kernel = method
+        dists = np.linalg.norm(self.target_points[:, None, :] - self.sensor_points[None, :, :], axis=2)
+        weights = np.exp(-(dists ** 2) / (2 * (self.sigma ** 2)))
+        weights[self.mask_indices, :] = 0.0
+    
 
     def transform(self, tensor):
 
@@ -38,16 +40,9 @@ class TopoMapper:
             data = tensor
 
         bands, time_steps, sensors  = data.shape
-        data_transposed = np.transpose(data, (2, 0, 1))
-
-        flat_data = data_transposed.reshape(sensors, -1)
-
-        interpolator = RBFInterpolator(self.points, flat_data, kernel=self.kernel)
-
-        flat_maps = interpolator(self.target_points)
-        flat_maps = flat_maps.T
-        flat_maps[:, self.mask_indices] = 0.0
-        images = flat_maps.reshape(bands, time_steps, self.grid_size, self.grid_size)
+        flat_data = data.reshape(-1, sensors)
+        flat_data = flat_data @ self.weights.T
+        images = flat_data.reshape(bands, time_steps, self.grid_size, self.grid_size)
         images = images.transpose(1, 0, 2, 3)
         
         return torch.tensor(images, dtype=torch.float32)
@@ -106,30 +101,21 @@ class SWEEPDataset(Dataset):
         return torch.stack(prototypes)
         '''
     @staticmethod
-    def compute_prototypes(data_tensor, label_tensor, num_classes, grid_size, device='cuda'):
+    def compute_prototypes(num_classes, grid_size, device='cuda'):
         x = torch.arange(grid_size, dtype=torch.float32, device=device)
         y = torch.arange(grid_size, dtype=torch.float32, device=device)
         yy, xx = torch.meshgrid(y, x, indexing='ij')
         
         center = grid_size // 2
-        # Sigma controls blob width. grid_size/8 gives a nice defined circle.
         sigma = grid_size / 8.0 
-        
-        # Calculate Gaussian: exp(-dist^2 / 2sigma^2)
-        # We want peak to be 1.0, so no normalization constant needed.
         dist_sq = (xx - center)**2 + (yy - center)**2
         master_blob = torch.exp(-dist_sq / (2 * sigma**2))
-        
-        # 2. Create the Bank: [Classes, Output_Channels, H, W]
-        # We assume Output_Channels == Num_Classes for orthogonality
+
         prototypes = torch.zeros(num_classes, grid_size, grid_size, device=device)
         
         for c in range(num_classes):
-            # For Class 'c', we put the Master Blob on Channel 'c'
-            # All other channels remain 0.0 (Black)
             prototypes[c, :, :] = master_blob
-            
-        print(f"    ✅ Created 5 Orthogonal Prototypes. Max Diff: 1.0")
+
         return prototypes
 
     def __len__(self):

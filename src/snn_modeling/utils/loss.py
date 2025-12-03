@@ -22,10 +22,8 @@ class FiringRateRegularizer:
 
         for name, layer in model.named_modules():
             if "ALIF" in str(type(layer)): 
-
                 if hasattr(layer, 'return_mem') and layer.return_mem:
                     continue 
-                
                 self.hooks.append(layer.register_forward_hook(get_activation(name)))
 
     def compute_tax(self):
@@ -79,7 +77,7 @@ class FullHybridLoss(nn.Module):
         segmentation_loss = self.dice_loss(inputs, targets_mask)
         classification_loss = self.class_loss(inputs, targets_class)
         with torch.no_grad():
-            smooth_targets = targets_mask * (1 - self.smoothing) + 0.5 * self.smoothing
+            smooth_targets = targets_mask * (1 - self.label_smooth) + 0.5 * self.label_smooth
         
         bce_loss = self.bce_loss(inputs, smooth_targets)
 

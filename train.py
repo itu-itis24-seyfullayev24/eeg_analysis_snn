@@ -173,7 +173,7 @@ def create_optimizer(model, config):
     for name, param in model.named_parameters():
         if not param.requires_grad:
             continue
-        if 'alpha' in name or 'beta' in name or 'slope' in name:
+        if 'alpha' in name or 'beta' in name or 'slope' in name or 'decay' in name or 'gamma' in name:
             time_params.append(param)
         elif 'threshold' in name:
             threshold_params.append(param)
@@ -236,8 +236,7 @@ def run_training(config, model, device, checkpoint=None):
         config['data']['grid_size']
     )
     '''
-    prototype_bank = SWEEPDataset.compute_prototypes(None, None, 
-                                                    config['model']['num_classes'],
+    prototype_bank = SWEEPDataset.compute_prototypes(config['model']['num_classes'],
                                                     config['data']['grid_size'], device=device)
     train_set = SWEEPDataset(
         config, 
@@ -266,7 +265,7 @@ def run_training(config, model, device, checkpoint=None):
         lambda_class = config['loss'].get('lambda_class', 1.0),
         alpha = config['loss'].get('alpha', 0.5),
         beta = config['loss'].get('beta', 0.5),
-        label_smoothing = config['loss'].get('label_smoothing', 0.0)
+        label_smooth = config['loss'].get('label_smoothing', 0.0)
 
     )
     

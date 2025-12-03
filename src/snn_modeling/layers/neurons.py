@@ -108,11 +108,7 @@ class ALIF(nn.Module):
 
         self.bn = nn.BatchNorm3d(num_channels) if batch_norm else nn.Identity()
         self.return_mem = return_mem
-
-        if spike_grad is None:
-            self.spike_grad = LearnableAtan(alpha=2.0, learnable=learn_slope)
-        else:
-            self.spike_grad = spike_grad
+        self.spike_grad = LearnableAtan(alpha=2.0, learnable=learn_slope)
     
     def forward(self, x):
         T, B, C, H, W = x.shape
