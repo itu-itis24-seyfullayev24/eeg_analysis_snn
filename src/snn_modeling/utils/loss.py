@@ -1,7 +1,7 @@
 import torch
 import torch.nn as nn
 from segmentation_models_pytorch.losses import TverskyLoss
-
+import torch.nn.functional as F
 
 class FiringRateRegularizer:
     def __init__(self, model, target_rate=0.05, lambda_reg=0.1):
@@ -46,19 +46,23 @@ class TopKClassificationLoss(nn.Module):
         super(TopKClassificationLoss, self).__init__()
         self.cross_entropy = nn.CrossEntropyLoss()
         self.k_percent = k_percent
-        self.scale = nn.Parameter(torch.tensor(10.0))
+        self.scale = nn.Parameter(torch.tensor(5.0))
 
     def forward(self, inputs, targets_class):
         B, C, H, W = inputs.shape
         flat_inputs = inputs.view(B, C, -1)
         
         k = max(1, int(H * W * self.k_percent))
- 
+
         top_k_values, _ = torch.topk(flat_inputs, k, dim=2)
-        peak_logits = torch.mean(top_k_values, dim=2) 
-        peak_logits = peak_logits * self.scale
-        
-        return self.cross_entropy(peak_logits, targets_class)
+        peak_logits = torch.mean(top_k_values, dim=2)
+        safe_scale = F.softplus(self.scale)
+        peak_logits_scaled = peak_logits * safe_scale
+
+        peak_logits_final = torch.clamp(peak_logits_scaled, min=-10.0, max=10.0)
+        loss = self.cross_entropy(peak_logits_final, targets_class)
+
+        return loss
 
 
 class FullHybridLoss(nn.Module):

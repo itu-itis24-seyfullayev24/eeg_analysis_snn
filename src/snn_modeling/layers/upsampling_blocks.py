@@ -16,7 +16,7 @@ class UpsampleLayer(nn.Module):
             padding=kernel_size//2, 
             bias=bias
         )
-        self.bn = nn.BatchNorm2d(out_channels) if batch_norm else nn.Identity()
+        self.bn = nn.BatchNorm2d(out_channels, eps=1e-4) if batch_norm else nn.Identity()
         self.layer = TimeDistributed(nn.Sequential(
             self.up,
             self.conv,
@@ -65,10 +65,10 @@ class FinalUpBlock(nn.Module):
     def __init__(self, in_channels, out_channels):
         super(FinalUpBlock, self).__init__()
     
-        self.up1 = UpsampleLayer(in_channels, in_channels, kernel_size=3, stride=2, bias=True, batch_norm=True)
+        self.up1 = UpsampleLayer(in_channels, in_channels, kernel_size=3, stride=1, bias=True, batch_norm=True)
         self.act1 = TimeDistributed(nn.SiLU())
 
-        self.up2 = UpsampleLayer(in_channels, out_channels, kernel_size=3, stride=2, bias=True)
+        self.up2 = UpsampleLayer(in_channels, out_channels, kernel_size=3, stride=1, bias=True)
         self.act2 = TimeDistributed(nn.SiLU())
 
 

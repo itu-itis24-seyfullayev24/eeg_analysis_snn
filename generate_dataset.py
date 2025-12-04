@@ -77,7 +77,7 @@ def run_data_setup(config=None):
                     feats_permuted = feats_32.permute(1, 2, 0)
                     video = topo(feats_permuted)
                     video = torch.clamp(video, min=0.0)
-                    all_videos.append(video.numpy())
+                    all_videos.append(video.cpu().numpy())
                     all_labels.append(emotion_map[emotion_id])
                 continue # Go to next file  
 
@@ -119,7 +119,7 @@ def run_data_setup(config=None):
                 
                 video = topo(feats_permuted)
                 video = torch.clamp(video, min=0.0)
-                all_videos.append(video.numpy()) 
+                all_videos.append(video.cpu().numpy()) 
                 all_labels.append(label_idx)
 
             count_added = len(windows)

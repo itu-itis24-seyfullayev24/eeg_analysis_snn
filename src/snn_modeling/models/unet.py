@@ -22,6 +22,7 @@ class SpikingUNet(nn.Module):
     def forward(self, x):
          # Scale input to [0, 0.25] for better spike generation
         
+
         if self.encoding == 'latency':
             x_static = x.mean(dim=0)
             x = spikegen.latency(x_static, num_steps=self.num_timesteps, tau=5, threshold=0.01, normalize=True, clip=True)
@@ -35,9 +36,12 @@ class SpikingUNet(nn.Module):
         else:
             raise ValueError(f"Unknown encoding method: {self.encoding}")
     
-        x_encoded, skips = self.encoder(x)
-        x = self.bottleneck(x_encoded)
+        x, skips = self.encoder(x)
+        #print( f"Encoder Output Shape: {x.shape} " )
+        x = self.bottleneck(x)
+        #print( f"Bottleneck Output Shape: {x.shape} " )
         x = self.decoder(x, skips)
+        #print( f"Decoder Output Shape: {x.shape} " )
         logits = self.classifier(x)
 
         return logits

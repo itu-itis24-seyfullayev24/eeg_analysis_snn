@@ -83,7 +83,7 @@ def apply_kaiming_init(model):
                 
     print(f"   Initialized {count} Convolutional layers.")
 
-def run_mpbn_warmup(model, loader, device, num_batches=10):
+def run_bn_warmup(model, loader, device, num_batches=10):
 
     print(f"Running Data-Driven Warmup ({num_batches} batches)...")
     
@@ -113,5 +113,5 @@ def initialize_head(head_layer):
 def initialize_network(model, train_loader, device):
 
     apply_kaiming_init(model)
-    run_mpbn_warmup(model, train_loader, device)
+    run_bn_warmup(model, train_loader, device)
     initialize_head(model.classifier.head)

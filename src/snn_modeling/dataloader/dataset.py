@@ -2,15 +2,19 @@ import torch
 import os
 import numpy as np
 from torch.utils.data import Dataset
+import torch.nn as nn
 from scipy.interpolate import griddata, RBFInterpolator
 
 from tqdm import tqdm 
 
-class TopoMapper:
-    def __init__(self, sensor_coords_df, grid_size=64, sigma=0.1): # Using Azimuthal Equidistant Projection
+class TopoMapper(nn.Module):
+    def __init__(self, sensor_coords_df, grid_size=64, sigma=0.2, device='cuda'): # Using Azimuthal Equidistant Projection
+        super(TopoMapper, self).__init__()
         self.sigma = sigma
         self.grid_size = grid_size
         theta = sensor_coords_df['theta'].values
+        self.device = torch.device(device if torch.cuda.is_available() else 'cpu')
+
         if np.max(np.abs(theta)) > 2 * np.pi:
             print("   Detected DEGREES in coordinates. Converting to Radians.")
             theta = np.deg2rad(theta)
@@ -21,31 +25,39 @@ class TopoMapper:
        
         x = r * np.cos(theta)
         y = r * np.sin(theta)
-        x, y= y, x
+        x, y = y, x
         
-        self.points = np.column_stack((x, y))
-        grid_x, grid_y = np.mgrid[-1:1:complex(0, grid_size), -1:1:complex(0, grid_size)] # trick to generate grid_size points without floating point issues
-        self.target_points = np.column_stack((grid_x.ravel(), grid_y.ravel()))
+        self.points = torch.tensor(np.column_stack((x, y)), dtype=torch.float32, device=self.device)
+
+        grid_x, grid_y = torch.meshgrid(torch.linspace(-1, 1, grid_size, device=self.device),
+                                        torch.linspace(-1, 1, grid_size, device=self.device), 
+                                        indexing='ij')
+        
+        self.target_points = torch.stack([grid_x.flatten(), grid_y.flatten()], dim=1)
         self.mask_indices = (self.target_points[:, 0]**2 + self.target_points[:, 1]**2) > 1.0
-        dists = np.linalg.norm(self.target_points[:, None, :] - self.sensor_points[None, :, :], axis=2)
-        weights = np.exp(-(dists ** 2) / (2 * (self.sigma ** 2)))
+        dists = torch.cdist(self.target_points, self.points)
+        weights = torch.exp(-(dists.pow(2)) / (2 * (self.sigma ** 2)))
         weights[self.mask_indices, :] = 0.0
-    
+        self.register_buffer('weights', weights)
 
-    def transform(self, tensor):
+    def transform(self, x):
 
-        if isinstance(tensor, torch.Tensor):
-            data = tensor.numpy()
-        else:
-            data = tensor
-
-        bands, time_steps, sensors  = data.shape
-        flat_data = data.reshape(-1, sensors)
-        flat_data = flat_data @ self.weights.T
-        images = flat_data.reshape(bands, time_steps, self.grid_size, self.grid_size)
-        images = images.transpose(1, 0, 2, 3)
+        if x.device != self.weights.device:
+            x = x.to(self.weights.device)
         
-        return torch.tensor(images, dtype=torch.float32)
+        
+        original_shape = x.shape
+        sensors = original_shape[-1]
+
+        x_flat = x.view(-1, sensors)
+        flat_images = torch.matmul(x_flat, self.weights.t())
+        new_shape = original_shape[:-1] + (self.grid_size, self.grid_size)
+        images = flat_images.view(new_shape)
+
+        if len(original_shape) == 3:
+             images = images.permute(1, 0, 2, 3)
+        
+        return images
     
     def __call__(self, tensor):
         return self.transform(tensor)
@@ -102,19 +114,23 @@ class SWEEPDataset(Dataset):
         '''
     @staticmethod
     def compute_prototypes(num_classes, grid_size, device='cuda'):
-        x = torch.arange(grid_size, dtype=torch.float32, device=device)
-        y = torch.arange(grid_size, dtype=torch.float32, device=device)
-        yy, xx = torch.meshgrid(y, x, indexing='ij')
-        
-        center = grid_size // 2
-        sigma = grid_size / 8.0 
-        dist_sq = (xx - center)**2 + (yy - center)**2
-        master_blob = torch.exp(-dist_sq / (2 * sigma**2))
-
-        prototypes = torch.zeros(num_classes, grid_size, grid_size, device=device)
+        range_t = torch.linspace(-1, 1, grid_size, device=device)
+        yy, xx = torch.meshgrid(range_t, range_t, indexing='ij')
+        prototypes = []
+        radius = 0.7
+        sigma = 0.25
         
         for c in range(num_classes):
-            prototypes[c, :, :] = master_blob
+            angle = (2 * np.pi * c) / num_classes
+            
+            cx = radius * np.sin(angle)
+            cy = radius * np.cos(angle)
+            
+            dist_sq = (xx - cx)**2 + (yy - cy)**2
+            blob = torch.exp(-dist_sq / (2 * sigma**2))
+
+            blob = blob / blob.max()
+            prototypes.append(blob)
 
         return prototypes
 
@@ -149,12 +165,35 @@ class SWEEPDataset(Dataset):
     def __getitem__(self, idx):
         video = self.data[idx]
         label_idx = self.labels[idx]
-        video = np.maximum(video, 0.0) 
-        video = np.log1p(video)
-        v_max = video.max() + 1e-7
-        video = video / v_max
+
+        # 1. Log Transform
+        video = np.log1p(np.maximum(video, 0.0))
+
+        # 2. Masked Z-Score Normalization
+        brain_mask = video > 1e-6
+        
+        if brain_mask.sum() > 0:
+            brain_pixels = video[brain_mask]
+            mean = brain_pixels.mean()
+            std = brain_pixels.std() + 1e-7
+            
+            # Standardize
+            video = (video - mean) / std
+            
+            # Clip & Scale (-3 to 3 sigma -> 0 to 1)
+            video = np.clip(video, -3, 3)
+            video = (video + 3) / 6
+        else:
+            video[:] = 0.0
+
+        # 3. Re-Apply Mask (Clean corners)
+        video[~brain_mask] = 0.0
+        
+        # 4. Tensor Conversion
+        video = torch.tensor(video, dtype=torch.float32)
+
+        # Target Logic...
         target_volume = torch.zeros(self.num_classes, self.grid_size, self.grid_size)
- 
         target_volume[label_idx] = self.prototypes[label_idx]
         
         return video, target_volume, label_idx

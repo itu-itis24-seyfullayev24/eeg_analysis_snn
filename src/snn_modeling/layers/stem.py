@@ -6,15 +6,13 @@ from .neurons import TimeDistributed
 class StemLayer(nn.Module):
     def __init__(self, in_channels):
         super(StemLayer, self).__init__()
-        self.conv = nn.Conv2d(in_channels, 64, kernel_size=7, stride=2, padding=3, bias=False)
-        self.bn = nn.BatchNorm2d(64)
+        self.conv = nn.Conv2d(in_channels, 64, kernel_size=3, stride=1, padding=1, bias=False)
+        self.bn = nn.BatchNorm2d(64, eps=1e-4)
         self.act = nn.SiLU(inplace=True) 
-        self.pool = nn.MaxPool2d(kernel_size=3, stride=2, padding=1)
         self.layer = TimeDistributed(nn.Sequential(
             self.conv,
             self.bn,
-            self.act,
-            self.pool
+            self.act
         ))
 
     def forward(self, x):
@@ -23,6 +21,7 @@ class StemLayer(nn.Module):
 class ClassifierHead(nn.Module):
     def __init__(self, in_features, num_classes):
         super(ClassifierHead, self).__init__()
+        #self.bn = TimeDistributed(nn.BatchNorm2d(in_features))
         self.head = TimeDistributed(nn.Conv2d(in_features, num_classes, kernel_size=1, bias=True))
     
     def forward(self, x):

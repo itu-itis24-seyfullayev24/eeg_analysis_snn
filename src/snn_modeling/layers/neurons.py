@@ -69,7 +69,7 @@ class ALIF(nn.Module):
     Adaptive LIF with Membrane Potential Batch Normalization.
     
     - Integrates inputs over time (Leaky).
-    - Normalizes membrane potential (BN) to prevent explosion.
+    - Normalizes Input (BN) to prevent explosion.
     - Adapts threshold (ALIF) to prevent saturation.
     - Uses HARD RESET.
     """
@@ -87,7 +87,7 @@ class ALIF(nn.Module):
         self.learn_gamma = learn_gamma
 
         if learn_beta:
-            self.beta_param = nn.Parameter(torch.tensor(beta).logit()) # Inverse sigmoid init
+            self.beta_param = nn.Parameter(torch.tensor(beta).logit())
         else:
             self.register_buffer("beta_fixed", torch.tensor(beta))
 
@@ -106,7 +106,7 @@ class ALIF(nn.Module):
         else:
             self.register_buffer("gamma_fixed", torch.tensor(gamma_adapt))
 
-        self.bn = nn.BatchNorm3d(num_channels) if batch_norm else nn.Identity()
+        self.bn = nn.BatchNorm3d(num_channels, eps=1e-4) if batch_norm else nn.Identity()
         self.return_mem = return_mem
         self.spike_grad = LearnableAtan(alpha=2.0, learnable=learn_slope)
     

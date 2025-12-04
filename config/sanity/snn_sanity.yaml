@@ -3,16 +3,17 @@ description: "Spiking ResNet-18 U-Net with standard LIF neurons and Rate encodin
 
 data:
   dataset_path: "data/eeg_emotions_processed"
-  encoding_method: "latency"
-  num_timesteps: 32
+  dataset_mode: "eeg"
+  encoding_method: "direct"
+  num_timesteps: 16
   window_size:  256
   sampling_rate: 256
   step_size: 128
-  grid_size:  64
+  grid_size:  32
   freq_bands: 5
   num_channels: 14
   train_split: 0.8
-  num_workers: 4
+  num_workers: 0
   num_samples: 2000
   
 
@@ -31,26 +32,28 @@ neuron_params:
   spike_model: "ALIF" 
   beta: 0.9
   threshold: 1.0
-  decay_adapt: 0.96
-  gamma_adapt: 1.0
-  spike_grad_alpha: 2.0
+  decay_adapt: 0.98
+  gamma_adapt: 0.75
+  spike_grad_alpha: 1.0
+
 
 training:
   epochs: 100
   batch_size: 16
-  learning_rate: 0.0005
+  learning_rate: 0.001
   weight_decay: 0.01
+  accumulation_steps: 4
 
 loss:
-  smooth: 1.0
-  lambda_seg: 1.0
+  smooth: 0.0
+  lambda_seg: 0.0
   lambda_bce: 0.0
-  lambda_class: 5.0
+  lambda_class: 3.0
   lambda_fire: 0.1
   target_rate: 0.05
   label_smoothing: 0.1
-  alpha: 0.8
-  beta: 0.2
+  alpha: 0.5
+  beta: 0.5
 
 logging:
   project_name: "snn-encoding-showdown"  # The name of the project on the website

@@ -5,6 +5,7 @@ from torch.utils.data import DataLoader
 from torch.utils.tensorboard import SummaryWriter
 from src.snn_modeling.utils.loss import FullHybridLoss, FiringRateRegularizer, TopKClassificationLoss
 from src.snn_modeling.dataloader.dataset import SWEEPDataset
+
 import os
 from datetime import datetime
 from sklearn.model_selection import train_test_split
@@ -15,7 +16,7 @@ import wandb
 import warnings
 from sklearn.exceptions import UndefinedMetricWarning
 import numpy as np
-from torch.amp import autocast, GradScaler
+
 from tqdm import tqdm
 from src.snn_modeling.utils.utils import initialize_network, monitor_network_health
 from src.snn_modeling.layers.neurons import ALIF
@@ -27,7 +28,7 @@ warnings.filterwarnings("ignore", category=UserWarning)
 warnings.filterwarnings("ignore", category=FutureWarning)
 warnings.filterwarnings("ignore", category=UndefinedMetricWarning)
 
-
+torch.autograd.set_detect_anomaly(True)
 
 def save_checkpoint(model, optimizer, scheduler, epoch, acc, dice, path="best_sweepnet.pt"):
     torch.save({
@@ -150,7 +151,7 @@ def log_visuals(model, val_loader, device, writer, epoch, threshold=0.5):
             ]
         }, step=epoch)
 
-def create_optimizer(model, config):
+def create_optimizer(model, loss_fn, config):
     lr = config['training'].get('learning_rate', 1e-3)
     base_params = []
     base_params_no_decay = []
@@ -169,22 +170,39 @@ def create_optimizer(model, config):
             no_decay_id.add(id(m.bias))
         if hasattr(m, 'gain') and m.gain is not None:
              no_decay_id.add(id(m.gain))
+    for m in loss_fn.modules():
+        if isinstance(m, classess_names):
+            for param in m.parameters(recurse=False):
+                no_decay_id.add(id(param))      
 
     for name, param in model.named_parameters():
         if not param.requires_grad:
             continue
         if 'alpha' in name or 'beta' in name or 'slope' in name or 'decay' in name or 'gamma' in name:
             time_params.append(param)
+            print(f"Special LR for Time Param: {name}")
         elif 'threshold' in name:
             threshold_params.append(param)
+            print(f"Special LR for Threshold Param: {name}")
         elif id(param) in no_decay_id:
             base_params_no_decay.append(param)
+            print(f"No Decay Param: {name}")
         else:
             base_params.append(param)
+            print(f"Base Decay Param: {name}")
 
+    for name, param in loss_fn.named_parameters():
+        if not param.requires_grad:
+            continue
+        if id(param) in no_decay_id:
+            base_params_no_decay.append(param)
+            print(f"No Decay Param: {name}")
+        else:
+            base_params.append(param)
+            print(f"Base Decay Param: {name}")
     optimizer = optim.AdamW([
         {'params': base_params, 'lr': lr, 'weight_decay': config['training'].get('weight_decay', 1e-4)},
-        {'params': base_params_no_decay, 'lr': lr, 'weight_decay': 0.0},
+        {'params': base_params_no_decay, 'lr': lr * 1e-1, 'weight_decay': 0.0},
         {'params': time_params, 'lr': lr * 1e-2, 'weight_decay': 0.0},
         {'params': threshold_params, 'lr': lr * 100, 'weight_decay': 0.0}
     ], betas=(0.9, 0.999))
@@ -209,7 +227,11 @@ def run_training(config, model, device, checkpoint=None):
     log_dir = os.path.join("results", run_name)
     writer = SummaryWriter(log_dir=log_dir)
     print(f"Initializing TensorBoard: {log_dir}")
-
+    """    if config['data'].get('dataset_mode') == 'mnist':
+    train_set = MNISTforSWEEP('train', time_steps=config['data']['num_timesteps'], device=device)
+    val_set = MNISTforSWEEP('val', time_steps=config['data']['num_timesteps'], device=device)
+    val_set.prototypes = train_set.prototypes
+    else:"""
     data_path = os.path.join(config['data']['dataset_path'], "data.npy")
     label_path = os.path.join(config['data']['dataset_path'], "labels.npy")
     
@@ -273,9 +295,9 @@ def run_training(config, model, device, checkpoint=None):
                                                 target_rate=config['loss'].get('target_rate', 0.05), 
                                                 lambda_reg=config['loss'].get('lambda_fire', 0.1))
     
+    loss_fn.to(device)
+    optimizer = create_optimizer(model, loss_fn, config)
 
-    optimizer = create_optimizer(model, config)
-    scaler = GradScaler()
     scheduler = optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=config['training']['epochs'], eta_min=1e-6)
     
     start_epoch = 0
@@ -295,29 +317,37 @@ def run_training(config, model, device, checkpoint=None):
     model = model.to(device)
     
     initialize_network(model, train_loader, device)
-
+    monitor_network_health(model, train_loader, device, 0)
+    accumulation_steps = config['training'].get('accumulation_steps', 1)
+    optimizer.zero_grad()
+    
     for epoch in range(start_epoch, epochs):
         
         model.train()
         train_loss = 0.0
         train_loop = tqdm(train_loader, desc=f"Epoch {epoch+1}/{config['training']['epochs']}", unit="batch")
-        for _, (inputs, targets, targets_c) in enumerate(train_loop):
+        for batch_idx, (inputs, targets, targets_c) in enumerate(train_loop):
 
             inputs, targets, targets_c = inputs.to(device), targets.to(device), targets_c.to(device)
+            if inputs.dim() == 4:
+                inputs = inputs.unsqueeze(1).repeat(1, 32, 1, 1, 1)
             inputs = inputs.permute(1, 0, 2, 3, 4)
 
-            optimizer.zero_grad()
-            with autocast(device_type="cuda"):
-                outputs = model(inputs)
-                outputs_agg = torch.mean(outputs, dim=0)
-                loss_spike_tax = spike_tax_collector.compute_tax()
-                loss = loss_fn(outputs_agg, targets, targets_c) + loss_spike_tax
-            scaler.scale(loss).backward()
-            scaler.step(optimizer)
-            scaler.update()
+            outputs = model(inputs)
+            outputs_agg = torch.mean(outputs, dim=0)
+            loss_spike_tax = spike_tax_collector.compute_tax()
+            raw_loss = loss_fn(outputs_agg, targets, targets_c) + loss_spike_tax
+            loss = raw_loss / accumulation_steps
+            loss.backward()
+
+            torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
+        
+            if (batch_idx + 1) % accumulation_steps == 0:
+                optimizer.step()
+                optimizer.zero_grad()
             
-            train_loss += loss.item()
-            train_loop.set_postfix(loss=loss.item())
+            train_loss += raw_loss.item()
+            train_loop.set_postfix(loss=raw_loss.item())
 
         avg_train_loss = train_loss / len(train_loader)
         val_loss, val_acc, val_bal_acc, val_dice, val_iou, val_pre, val_rec = validate(model, val_loader, loss_fn, device)

@@ -17,3 +17,6 @@ wandb/
 saved_models/
 .idea/
 eeg_emotions_processed/
+eeg_emotions_processed1/
+dummy_loader.py
+MNIST/
