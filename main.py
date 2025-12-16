@@ -13,6 +13,10 @@ def main():
 
     parser.add_argument('--config', type=str, required=True, help='Path to config YAML')
     parser.add_argument('--mode', type=str, default='train', help='Mode: train or test')
+
+    parser.add_argument('--phase', type=int, help='Specify training phase (1, 2, 3, or 4)')
+    parser.add_argument('--resume', action='store_true', help='Resume from checkpoint')
+    
     parser.add_argument('--checkpoint', type=str, help='Path to checkpoint')
 
     parser.add_argument('--setup_data', action='store_true', help='Setup data before training')
@@ -26,6 +30,9 @@ def main():
 
     if not os.path.exists(args.config):
         raise FileNotFoundError(f"Config file not found: {args.config}")
+    
+    if args.resume and args.checkpoint is None:
+        parser.error("When using --resume, you MUST specify --checkpoint.")
     
     with open(config_path, 'r') as file:
         config = yaml.safe_load(file)
@@ -44,8 +51,7 @@ def main():
         # Execute Setup
         run_data_setup(config)
         
-        print("✅ Setup complete. Exiting.")
-        sys.exit(0)
+        print("Setup complete.")
     else:
         checkpoint = None
         device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -56,7 +62,7 @@ def main():
             print(f"Loaded checkpoint from {args.checkpoint}.")
         
         model = build_model(config).to(device)
-        run_training(config, model, device, checkpoint)
+        run_training(config, model, device, phase=args.phase, resume=args.resume, checkpoint=checkpoint)
 
 if __name__ == "__main__":
     main()

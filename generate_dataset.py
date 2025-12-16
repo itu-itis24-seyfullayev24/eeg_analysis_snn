@@ -8,7 +8,7 @@ from data_process.data_loader import DatasetReader
 from data_process.wavelet import WaveletModule
 from src.snn_modeling.dataloader.dataset import TopoMapper
 
-SELECTED_EMOTIONS = [3, 5, 8, 10, 15] 
+SELECTED_EMOTIONS = [0, 1, 2, 3, 4] 
 
 def run_data_setup(config=None):
     print("Initializing Pipeline...")
@@ -38,9 +38,9 @@ def run_data_setup(config=None):
 
     os.makedirs(OUTPUT_FOLDER, exist_ok=True)
 
-    dataset_reader = DatasetReader(RAW_FOLDER, selected_emotions=SELECTED_EMOTIONS)
+    dataset_reader = DatasetReader(RAW_FOLDER)#, selected_emotions=SELECTED_EMOTIONS)
     wavelet = WaveletModule(window_size=WINDOW_SIZE, fs=SAMPLING_RATE, target_steps=TARGET_STEPS)
-    coords = pd.read_csv(COORDS_PATH, sep='\t')
+    coords = pd.read_csv(COORDS_PATH, sep=',')
     topo = TopoMapper(coords, grid_size=config['data'].get('grid_size', 64))
     
     all_videos = []
@@ -52,14 +52,14 @@ def run_data_setup(config=None):
     indices = np.arange(len(dataset_reader))
     np.random.shuffle(indices)
 
-    for i in tqdm(indices, desc="Processing Files"):
+    for raw_eeg, emotion_id in tqdm(dataset_reader.iterate_file_based(), total=len(dataset_reader), desc="Files Processed"):
         if use_sampling_limit and total_collected >= TOTAL_TARGET:
             print("\n🛑 Total sample target reached!")
             break
 
         try:
             if not use_sampling_limit:
-                raw_eeg, emotion_id = dataset_reader[i]
+                #raw_eeg, emotion_id = dataset_reader[i]
                 windows = wavelet.create_windows(raw_eeg, step_size=STEP_SIZE)
                 if len(windows) == 0: continue
                     
@@ -81,18 +81,13 @@ def run_data_setup(config=None):
                     all_labels.append(emotion_map[emotion_id])
                 continue # Go to next file  
 
-            _, raw_id = dataset_reader[i]
-  
-            
-            if raw_id not in emotion_map: continue
-            label_idx = emotion_map[raw_id]
+            if emotion_id not in emotion_map: continue
+            label_idx = emotion_map[emotion_id]
 
             # 2. Check if this class is full
             if class_counts[label_idx] >= SAMPLES_PER_CLASS:
                 continue # Skip this file, we have enough of this emotion
 
-            # 3. Process the file
-            raw_eeg, _ = dataset_reader[i] 
             windows = wavelet.create_windows(raw_eeg, step_size=STEP_SIZE)
             
             if len(windows) == 0: continue
@@ -127,7 +122,7 @@ def run_data_setup(config=None):
             total_collected += count_added
                 
         except Exception as e:
-            print(f"Error processing file {i}: {e}")
+            print(f"Error processing file: {e}")
             continue
     
     print("Stacking data...")

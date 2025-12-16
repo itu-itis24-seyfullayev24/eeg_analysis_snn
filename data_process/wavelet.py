@@ -5,8 +5,7 @@ import pywt
 import scipy.signal
 
 class WaveletModule(nn.Module):
-    class WaveletModule(nn.Module):
-        def __init__(self, window_size=256, target_steps=32, fs=200):
+    def __init__(self, window_size=200, target_steps=32, fs=200):
             super().__init__()
             self.window_size = window_size
             self.target_steps = target_steps
@@ -21,7 +20,7 @@ class WaveletModule(nn.Module):
                 "gamma": (31, 50)
             }
 
-    def create_windows(self, eeg, step_size=128):
+    def create_windows(self, eeg, step_size=100):
         windows = []
         channels, total_samples = eeg.shape
 

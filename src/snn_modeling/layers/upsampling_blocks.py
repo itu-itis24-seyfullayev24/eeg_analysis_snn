@@ -4,6 +4,33 @@ import torch
 from .residual_blocks import ConvSpiking
 from .neurons import TimeDistributed
 
+class GatedSkip(nn.Module):
+    def __init__(self, in_channels, spike_model=snn.Leaky, **neuron_params):
+        super(GatedSkip, self).__init__()
+
+        self.gate = TimeDistributed(nn.Sequential(
+            nn.Conv2d(in_channels, in_channels, kernel_size=1),
+            nn.Sigmoid()
+        ))
+
+        self.adapter = TimeDistributed(nn.Sequential(
+            nn.Conv2d(in_channels, in_channels, kernel_size=1),
+            nn.SiLU(inplace=True)
+        ))
+        layer_params = neuron_params.copy()
+        if spike_model.__name__ == 'ALIF':
+            layer_params['num_channels'] = in_channels
+        self.spike = spike_model(**layer_params)
+        nn.init.constant_(self.gate.module[0].bias, 2.0)
+
+    def forward(self, x_skip):
+        gate = self.gate(x_skip)
+        adapted = self.adapter(x_skip)
+        gated = adapted * gate
+        gated = self.spike(gated)
+        return gated
+
+
 class UpsampleLayer(nn.Module):
     def __init__(self, in_channels, out_channels, kernel_size=2, stride=2, batch_norm=False, bias=False):
         super(UpsampleLayer, self).__init__()
@@ -41,7 +68,8 @@ class SpikingUpsampleBlock(nn.Module):
             spike_model=spike_model, 
             **neuron_params
         )
-        
+        self.gate = GatedSkip(skip_channels, spike_model=spike_model, **neuron_params)
+
         self.conv2 = ConvSpiking(
             out_channels, 
             out_channels, 
@@ -53,8 +81,7 @@ class SpikingUpsampleBlock(nn.Module):
 
     def forward(self, x, x_skip):
         x = self.upsample(x)
-        
-        assert x.shape[-1] == x_skip.shape[-1]
+        x_skip = self.gate(x_skip)
 
         x = torch.cat([x, x_skip], dim=2)
         x = self.conv1(x)
@@ -66,10 +93,10 @@ class FinalUpBlock(nn.Module):
         super(FinalUpBlock, self).__init__()
     
         self.up1 = UpsampleLayer(in_channels, in_channels, kernel_size=3, stride=1, bias=True, batch_norm=True)
-        self.act1 = TimeDistributed(nn.SiLU())
+        self.act1 = nn.SiLU()
 
         self.up2 = UpsampleLayer(in_channels, out_channels, kernel_size=3, stride=1, bias=True)
-        self.act2 = TimeDistributed(nn.SiLU())
+        self.act2 = nn.SiLU()
 
 
     def forward(self, x):

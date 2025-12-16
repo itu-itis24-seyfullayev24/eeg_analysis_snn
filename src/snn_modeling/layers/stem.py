@@ -19,10 +19,10 @@ class StemLayer(nn.Module):
         return self.layer(x)
     
 class ClassifierHead(nn.Module):
-    def __init__(self, in_features, num_classes):
+    def __init__(self, in_features, num_classes, kernel_size=1):
         super(ClassifierHead, self).__init__()
 
-        self.head = TimeDistributed(nn.Conv2d(in_features, num_classes, kernel_size=1, bias=True))
+        self.head = TimeDistributed(nn.Conv2d(in_features, num_classes, kernel_size=kernel_size, bias=True))
     
     def forward(self, x):
         return self.head(x)

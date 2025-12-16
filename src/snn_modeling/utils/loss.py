@@ -42,7 +42,7 @@ class FiringRateRegularizer:
 
 
 class TopKClassificationLoss(nn.Module):
-    def __init__(self, k_percent=0.1):
+    def __init__(self, k_percent=0.05):
         super(TopKClassificationLoss, self).__init__()
         self.cross_entropy = nn.CrossEntropyLoss()
         self.k_percent = k_percent
@@ -59,8 +59,7 @@ class TopKClassificationLoss(nn.Module):
         safe_scale = F.softplus(self.scale)
         peak_logits_scaled = peak_logits * safe_scale
 
-        peak_logits_final = torch.clamp(peak_logits_scaled, min=-10.0, max=10.0)
-        loss = self.cross_entropy(peak_logits_final, targets_class)
+        loss = self.cross_entropy(peak_logits_scaled, targets_class)
 
         return loss
 
@@ -76,16 +75,25 @@ class FullHybridLoss(nn.Module):
         self.lambda_seg = lambda_seg
         self.lambda_bce = lambda_bce
         self.label_smooth = label_smooth
+    
+    def add_fire_rate_loss(self, model, lambda_fire=0.1, target_rate=0.05):
+        self.fire_loss = FiringRateRegularizer(model, target_rate=target_rate, lambda_reg=lambda_fire)
 
     def forward(self, inputs, targets_mask, targets_class):
-        segmentation_loss = self.dice_loss(inputs, targets_mask)
-        classification_loss = self.class_loss(inputs, targets_class)
+        segmentation_loss, classification_loss, bce_loss = 0, 0, 0
+        if self.lambda_seg > 0:
+            segmentation_loss = self.dice_loss(inputs, targets_mask)
+        if self.lambda_class > 0:
+            classification_loss = self.class_loss(inputs, targets_class)
         with torch.no_grad():
             smooth_targets = targets_mask * (1 - self.label_smooth) + 0.5 * self.label_smooth
-        
-        bce_loss = self.bce_loss(inputs, smooth_targets)
+        if self.lambda_bce > 0:
+            bce_loss = self.bce_loss(inputs, smooth_targets)
 
         total_loss = self.lambda_seg * segmentation_loss + self.lambda_class * classification_loss + self.lambda_bce * bce_loss
         
+        if hasattr(self, 'fire_loss'):
+            tax_loss = self.fire_loss.compute_tax()
+            total_loss += tax_loss
         
         return total_loss

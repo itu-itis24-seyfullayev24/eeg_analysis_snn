@@ -166,9 +166,9 @@ class SWEEPDataset(Dataset):
         video = self.data[idx]
         label_idx = self.labels[idx]
 
-        # 1. Log Transform
-        video = np.log1p(np.maximum(video, 0.0))
-
+        """# 1. Log Transform
+        video = np.log1p(np.maximum(video, 0.0)*1e9)
+        
         # 2. Masked Z-Score Normalization
         brain_mask = video > 1e-6
         
@@ -187,8 +187,10 @@ class SWEEPDataset(Dataset):
             video[:] = 0.0
 
         # 3. Re-Apply Mask (Clean corners)
-        video[~brain_mask] = 0.0
-        
+        video[~brain_mask] = 0.0"""
+        P98_VAL = 3758.30126953125 # The Holy Number
+        GAIN = 10.0  # The gain used in the tanh
+        video = np.tanh(video / P98_VAL * GAIN)
         # 4. Tensor Conversion
         video = torch.tensor(video, dtype=torch.float32)
 

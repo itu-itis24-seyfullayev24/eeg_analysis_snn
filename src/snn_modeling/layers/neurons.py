@@ -62,6 +62,9 @@ class TimeDistributed(nn.Module):
             return y
         else:
             return self.module(x)
+    
+    def __name__(self):
+        return self.module.__name__
 
 
 class ALIF(nn.Module):

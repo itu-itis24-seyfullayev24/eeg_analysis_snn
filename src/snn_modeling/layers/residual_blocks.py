@@ -17,9 +17,9 @@ class ConvSpiking(nn.Module):
         x = self.spike(x)
         return x
 
-class SpikingDualBlock(nn.Module):
+class SpikingResBlock(nn.Module):
     def __init__(self, in_channels, out_channels, stride=1, p_drop=0.2, spike_model=snn.Leaky, **neuron_params):
-        super(SpikingDualBlock, self).__init__()
+        super(SpikingResBlock, self).__init__()
 
         self.block1 = ConvSpiking(
             in_channels, 
