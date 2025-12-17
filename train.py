@@ -431,7 +431,7 @@ def phase_three(config, model, device, train_loader, val_loader, writer, checkpo
     epochs = config['training']['phase_3_epochs']
     accumulation_steps = config['training'].get('accumulation_steps', 1)
     
-    optimizer = create_optimizer(model, loss_fn, config, low_encoder_lr=False)
+    optimizer = create_optimizer(model, loss_fn, config, low_encoder_lr=True)
     scheduler = optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=epochs, eta_min=1e-6)
     
     if resume:
