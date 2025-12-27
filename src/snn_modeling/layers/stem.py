@@ -2,7 +2,7 @@ import torch.nn as nn
 import torch
 import snntorch as snn
 from .residual_blocks import ConvSpiking
-from .neurons import TimeDistributed
+from .neurons import TimeDistributed, GradientReversalLayer
 
 class StemLayer(nn.Module):
     def __init__(self, in_channels):
@@ -44,4 +44,24 @@ class BottleneckBlock(nn.Module):
         x = self.conv1(x)
         x = self.drop(x)
         x = self.conv2(x)
+        return x
+
+class DomainClassifierHead(nn.Module):
+    def __init__(self, feature_dim, num_subjects):
+        super(DomainClassifierHead, self).__init__()
+
+        self.grad = GradientReversalLayer()
+
+        self.head = nn.Sequential(
+        nn.Linear(feature_dim, 256),
+        nn.SiLU(inplace=True),
+        nn.Dropout(0.5),
+        nn.Linear(256, num_subjects)
+    )
+    
+    def forward(self, x, lambda_=1.0):
+        T, B, C, H, W = x.shape
+        x = x.view(T*B, -1)
+        x = self.grad(x, lambda_)
+        x = self.head(x)
         return x

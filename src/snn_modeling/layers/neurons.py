@@ -1,5 +1,17 @@
 import torch
 import torch.nn as nn
+from torch.autograd import Function
+
+class GradientReversalLayer(Function):
+    @staticmethod
+    def forward(ctx, x, lambda_):
+        ctx.lambda_ = lambda_
+        return x.view_as(x)
+
+    @staticmethod
+    def backward(ctx, grad_output):
+        return (grad_output.neg() * ctx.lambda_), None
+    
 class LearnableAtan(nn.Module):
     """
         A PyTorch-native Learnable Arctan Surrogate.

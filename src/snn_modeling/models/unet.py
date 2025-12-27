@@ -2,7 +2,7 @@ import torch
 import torch.nn as nn
 import snntorch as snn
 from .decoders import ResNetDecoder, SpikingResNetDecoder
-from ..layers.stem import BottleneckBlock, ClassifierHead
+from ..layers.stem import BottleneckBlock, ClassifierHead, DomainClassifierHead
 import snntorch.spikegen as spikegen
 
 class SpikingUNet(nn.Module):
@@ -54,10 +54,14 @@ class SpikingResNetClassifier(nn.Module):
         self.encoder = encoder_backbone 
         self.num_classes = num_classes
         self.classifier = ClassifierHead(512, num_classes)
+        feature_dim = 512 * 4 * 4
+        self.domain_classifier = DomainClassifierHead(feature_dim, num_subjects=16)
 
-    def forward(self, x):
+    def forward(self, x, lambda_=1.0,):
 
         features, _ = self.encoder(x)
         out = self.classifier(features)
+        domain_out = self.domain_classifier(features, lambda_)
 
-        return out.mean(dim=0)  # Mean over time dimension
+
+        return out.mean(dim=0), domain_out  # Mean over time dimension
