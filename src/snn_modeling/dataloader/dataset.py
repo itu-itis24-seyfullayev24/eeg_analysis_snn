@@ -92,10 +92,10 @@ class SWEEPDataset(Dataset):
         """
         if split == 'train':
             print(f"Selecting TRAINING set ({len(df_train)} samples)")
-            df_slice = df_train if not experiment else df_train[:25000]
+            df_slice = df_train if not experiment else df_train.sample(25000, random_state=42) #[:25000]
         elif split == 'val':
             print(f"Selecting VALIDATION set ({len(df_val)} samples)")
-            df_slice = df_val if not experiment else df_val[:6400]
+            df_slice = df_val if not experiment else df_val.sample(6400, random_state=42)#[:6400]
         else:
             raise ValueError(f"Unknown split '{split}'. Use 'train' or 'val'.")
         self.samples = list(zip(df_slice['filename'], df_slice['emotion_id']))
