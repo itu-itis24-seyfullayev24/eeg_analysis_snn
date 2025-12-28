@@ -62,13 +62,14 @@ class TopoMapper(nn.Module):
         return self.transform(tensor)
 
 class SWEEPDataset(Dataset):
-    def __init__(self, config, loso, split='train', experiment=False, prototypes=None):
+    def __init__(self, config, loso, split='train', experiment=False, dann=False, prototypes=None):
         self.config = config
         self.split = split
         self.num_classes = config['model'].get('num_classes', 5)
         self.grid_size = config['data'].get('grid_size', 32)
         self.dataset_path = config['data']['dataset_path'] 
         self.samples_dir = os.path.join(self.dataset_path)
+        self.dann = dann
         index_file = os.path.join(self.dataset_path, "index.csv")
 
         if not os.path.exists(index_file):
@@ -92,10 +93,10 @@ class SWEEPDataset(Dataset):
         """
         if split == 'train':
             print(f"Selecting TRAINING set ({len(df_train)} samples)")
-            df_slice = df_train if not experiment else df_train[:25000]
+            df_slice = df_train if not experiment else df_train.sample(n=25000, random_state=42)
         elif split == 'val':
             print(f"Selecting VALIDATION set ({len(df_val)} samples)")
-            df_slice = df_val if not experiment else df_val[:6400]
+            df_slice = df_val if not experiment else df_val.sample(n=6400, random_state=42)
         else:
             raise ValueError(f"Unknown split '{split}'. Use 'train' or 'val'.")
         self.samples = list(zip(df_slice['filename'], df_slice['emotion_id']))
@@ -128,7 +129,7 @@ class SWEEPDataset(Dataset):
 
     def __getitem__(self, idx):
         fname, label_idx = self.samples[idx]
-        
+        s_id = int(fname.split('_')[0])-1  # Subject ID from filename
         file_path = os.path.join(self.samples_dir, fname)
         try:
             video = torch.load(file_path) 
@@ -142,5 +143,6 @@ class SWEEPDataset(Dataset):
 
         target_volume = torch.zeros(self.num_classes, self.grid_size, self.grid_size)
         target_volume[label_idx] = self.prototypes[label_idx]
-        
+        if self.dann and self.split == 'train':
+            return video, target_volume, label_idx, s_id
         return video, target_volume, label_idx

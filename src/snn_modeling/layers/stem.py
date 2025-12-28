@@ -50,8 +50,6 @@ class DomainClassifierHead(nn.Module):
     def __init__(self, feature_dim, num_subjects):
         super(DomainClassifierHead, self).__init__()
 
-        self.grad = GradientReversalLayer()
-
         self.head = nn.Sequential(
         nn.Linear(feature_dim, 256),
         nn.SiLU(inplace=True),
@@ -62,6 +60,6 @@ class DomainClassifierHead(nn.Module):
     def forward(self, x, lambda_=1.0):
         T, B, C, H, W = x.shape
         x = x.view(T*B, -1)
-        x = self.grad(x, lambda_)
+        x = GradientReversalLayer.apply(x, lambda_)
         x = self.head(x)
         return x

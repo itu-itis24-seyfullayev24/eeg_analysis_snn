@@ -18,7 +18,7 @@ from sklearn.exceptions import UndefinedMetricWarning
 import numpy as np
 
 from tqdm import tqdm
-from src.snn_modeling.utils.utils import initialize_network
+from src.snn_modeling.utils.utils import initialize_network, get_dann_lambda
 from src.snn_modeling.layers.neurons import ALIF
 from src.snn_modeling.models.unet import SpikingResNetClassifier
 from src.snn_modeling.models.encoders import SpikingResNet18Encoder
@@ -230,8 +230,8 @@ def training_loop(phase,
                   scheduler, 
                   writer, 
                   checkpoint_dir,
-                  freeze_bn=False):
-
+                  freeze_bn=False,
+                  dann=False):
 
     for epoch in range(start_epoch, epochs):
         model.train()
@@ -239,15 +239,25 @@ def training_loop(phase,
             model.encoder.apply(freeze_bn_stats)
         train_loss = 0.0
         train_loop = tqdm(train_loader, desc=f"Phase {phase} Epoch {epoch+1}/{epochs}", unit="batch")
-        for batch_idx, (inputs, targets, targets_c) in enumerate(train_loop):
-            
-            inputs, targets, targets_c = inputs.to(device), targets.to(device), targets_c.to(device)
+        for batch_idx, batch_data in enumerate(train_loop):
+            if dann:
+                inputs, targets, targets_c, s_id = batch_data
+                inputs, targets, targets_c, s_id = inputs.to(device), targets.to(device), targets_c.to(device), s_id.to(device)
+            else:
+                inputs, targets, targets_c = batch_data
+                inputs, targets, targets_c = inputs.to(device), targets.to(device), targets_c.to(device)
             
             inputs = inputs.permute(2, 0, 1, 3, 4)
-            outputs = model(inputs)
 
-            loss = loss_fn(outputs, targets, targets_c)
-            
+            if dann:
+                outputs, s_out = model(inputs, get_dann_lambda(epoch, epochs, batch_idx, len(train_loader)))
+                domain_target = s_id.repeat(inputs.size(0))
+                #print(s_out.shape, domain_target.shape)
+                loss = nn.CrossEntropyLoss()(s_out, domain_target) + loss_fn(outputs, targets, targets_c)
+            else:
+                outputs = model(inputs)
+                loss = loss_fn(outputs, targets, targets_c)
+          
             loss.backward()
             optimizer.step()
             optimizer.zero_grad()
@@ -299,11 +309,12 @@ def training_loop(phase,
             save_checkpoint(model, optimizer, scheduler, epoch, best_acc, best_dice, f"{checkpoint_dir}/checkpoint_{epoch:03d}_{best_acc:.4f}_{best_dice:.4f}.pt")
 
 
-def phase_one(config, model, device, train_loader, val_loader, writer, checkpoint_dir, resume, checkpoint=None):
+def phase_one(config, model, device, train_loader, val_loader, writer, checkpoint_dir, resume, checkpoint=None, dann=False):
     print("=== Phase One: Training Encoder Only ===")
     enc_class = SpikingResNetClassifier(
         encoder_backbone = model.encoder,
-        num_classes=config['model'].get('num_classes', 5)
+        num_classes=config['model'].get('num_classes', 5),
+        dann=dann
     ).to(device)
 
     initialize_network(enc_class, train_loader, device)
@@ -336,7 +347,7 @@ def phase_one(config, model, device, train_loader, val_loader, writer, checkpoin
         best_dice = checkpoint['dice']
         print(f"Resuming training from epoch {start_epoch}...")
 
-    training_loop(1, start_epoch, epochs, best_acc, best_dice, enc_class, device, train_loader, val_loader, loss_fn, optimizer, scheduler, writer, checkpoint_dir)
+    training_loop(1, start_epoch, epochs, best_acc, best_dice, enc_class, device, train_loader, val_loader, loss_fn, optimizer, scheduler, writer, checkpoint_dir, dann=dann)
     
     
 def phase_two(config, model, device, train_loader, val_loader, writer, checkpoint_dir, resume, checkpoint):
@@ -447,7 +458,7 @@ phase_handles = {
 }
 
 
-def run_training(config, model, device, phase, resume, loso, checkpoint=None):
+def run_training(config, model, device, phase, resume, loso, dann, checkpoint=None):
 
     run_name = f"{config['experiment_name']}_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
     checkpoint_dir = os.path.join("saved_models", f"phase{phase}", run_name)
@@ -471,14 +482,16 @@ def run_training(config, model, device, phase, resume, loso, checkpoint=None):
         config, 
         split='train',
         experiment=True,
-        loso=loso
+        loso=loso,
+        dann=dann
     )
     
     val_set = SWEEPDataset(
         config, 
         split='val',
         experiment=True,
-        loso=loso
+        loso=loso,
+        dann=dann
     )
 
     train_loader = DataLoader(train_set, batch_size=config['training']['batch_size'], shuffle=True, num_workers=config['data'].get('num_workers', 0))
@@ -487,8 +500,10 @@ def run_training(config, model, device, phase, resume, loso, checkpoint=None):
     print(f"Data Loaded: {len(train_set)} Train | {len(val_set)} Val")
     
     model = model.to(device)
-    phase_handles[phase](config, model, device, train_loader, val_loader, writer, checkpoint_dir, resume, checkpoint)
-   
+    if dann:
+        phase_handles[phase](config, model, device, train_loader, val_loader, writer, checkpoint_dir, resume, checkpoint, dann=dann)
+    else:
+        phase_handles[phase](config, model, device, train_loader, val_loader, writer, checkpoint_dir, resume, checkpoint)
     print("--- Training Complete ---")
     wandb.finish()
     writer.close()

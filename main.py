@@ -21,7 +21,7 @@ def main():
 
     parser.add_argument('--phase', type=int, help='Specify training phase (1, 2, 3, or 4)')
     parser.add_argument('--resume', action='store_true', help='Resume from checkpoint')
-    
+    parser.add_argument('--dann', action='store_true', help='DANN Training. Applicable only for Phase 1.')
     parser.add_argument('--checkpoint', type=str, help='Path to checkpoint')
 
     parser.add_argument('--setup_data', action='store_true', help='Setup data before training')
@@ -90,9 +90,12 @@ def main():
         
         if not args.loso:
             parser.error("You MUST specify --loso for training/testing.")
+
+        if args.dann and args.phase != 1:
+            parser.error("--dann flag is only applicable for Phase 1 training.")
         
         model = build_model(config).to(device)
-        run_training(config, model, device, phase=args.phase, resume=args.resume, loso=args.loso, checkpoint=checkpoint)
+        run_training(config, model, device, phase=args.phase, resume=args.resume, loso=args.loso, checkpoint=checkpoint, dann=args.dann)
 
 if __name__ == "__main__":
     main()

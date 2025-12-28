@@ -48,7 +48,7 @@ class UNet(nn.Module):
         raise NotImplementedError("This is a placeholder for the ANN UNet.")
 
 class SpikingResNetClassifier(nn.Module):
-    def __init__(self, encoder_backbone, num_classes=5):
+    def __init__(self, encoder_backbone, dann=False, num_classes=5):
         super().__init__()
 
         self.encoder = encoder_backbone 
@@ -56,6 +56,7 @@ class SpikingResNetClassifier(nn.Module):
         self.classifier = ClassifierHead(512, num_classes)
         feature_dim = 512 * 4 * 4
         self.domain_classifier = DomainClassifierHead(feature_dim, num_subjects=16)
+        self.dann = dann
 
     def forward(self, x, lambda_=1.0,):
 
@@ -63,5 +64,7 @@ class SpikingResNetClassifier(nn.Module):
         out = self.classifier(features)
         domain_out = self.domain_classifier(features, lambda_)
 
-
-        return out.mean(dim=0), domain_out  # Mean over time dimension
+        if self.dann and self.training:
+            return out.mean(dim=0), domain_out  # Mean over time dimension
+        else:
+            return out.mean(dim=0)  # Mean over time dimension

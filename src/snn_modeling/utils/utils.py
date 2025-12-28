@@ -11,6 +11,16 @@ import matplotlib.pyplot as plt
 import seaborn as sns
 import random
 
+def get_dann_lambda(current_epoch, total_epochs, current_batch, batches_per_epoch):
+    # Calculate progress p from 0 to 1
+    p = float(current_batch + current_epoch * batches_per_epoch) / (total_epochs * batches_per_epoch)
+    
+    # The formula from Ganin et al. (2015)
+    # 2 / (1 + exp(-10 * p)) - 1
+    # This creates a Sigmoid curve from 0.0 to 1.0
+    lambda_val = 2.0 / (1.0 + np.exp(-10 * p)) - 1.0
+    return lambda_val
+
 def seed_everything(seed=42):
     random.seed(seed)
     os.environ['PYTHONHASHSEED'] = str(seed)
@@ -270,7 +280,7 @@ def apply_kaiming_init(model):
                 nn.init.constant_(m.gate.module[0].bias, 2.0)
                 count += 1
     print(f"   Initialized {count} Open Gates.")
-                
+            
     
 
 def run_bn_warmup(model, loader, device, num_batches=10):
@@ -281,7 +291,9 @@ def run_bn_warmup(model, loader, device, num_batches=10):
     model.to(device)
     
     with torch.no_grad():
-        for i, (inputs, _, _) in enumerate(tqdm(loader, total=num_batches, desc="Warming up")):
+        for i, batch_data in enumerate(tqdm(loader, total=num_batches, desc="Warming up")):
+            inputs = batch_data[0]
+
             if i >= num_batches:
                 break
             inputs = inputs.to(device)

@@ -6,7 +6,7 @@ class GradientReversalLayer(Function):
     @staticmethod
     def forward(ctx, x, lambda_):
         ctx.lambda_ = lambda_
-        return x.view_as(x)
+        return x.clone()
 
     @staticmethod
     def backward(ctx, grad_output):
