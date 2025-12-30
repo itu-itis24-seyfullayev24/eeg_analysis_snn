@@ -4,6 +4,7 @@ import snntorch as snn
 from .decoders import ResNetDecoder, SpikingResNetDecoder
 from ..layers.stem import BottleneckBlock, ClassifierHead
 import snntorch.spikegen as spikegen
+import torch.nn.functional as F
 
 class SpikingUNet(nn.Module):
     def __init__(self, encoder, in_channels, num_classes, config, spike_model=snn.Leaky, **neuron_params):
@@ -48,16 +49,23 @@ class UNet(nn.Module):
         raise NotImplementedError("This is a placeholder for the ANN UNet.")
 
 class SpikingResNetClassifier(nn.Module):
-    def __init__(self, encoder_backbone, num_classes=5):
+    def __init__(self, encoder_backbone, num_classes=5, feature_dim=512, head_dim=128):
         super().__init__()
 
         self.encoder = encoder_backbone 
         self.num_classes = num_classes
         self.classifier = ClassifierHead(512, num_classes)
+        self.supcon_head = nn.Sequential(
+            nn.AdaptiveAvgPool2d((1,1)),
+            nn.Conv2d(feature_dim, feature_dim, kernel_size=1),
+            nn.SiLU(inplace=True),
+            nn.Conv2d(feature_dim, head_dim, kernel_size=1)
+        )
 
     def forward(self, x):
-
         features, _ = self.encoder(x)
+        T, B, C, H, W = x.shape
         out = self.classifier(features)
-
-        return out.mean(dim=0)  # Mean over time dimension
+        proj = self.supcon_head(features)
+        embedding = F.normalize(proj.view(T * B, -1), dim=1).view(T, B, -1, H, W)
+        return out.mean(dim=0), embedding  # Mean over time dimension

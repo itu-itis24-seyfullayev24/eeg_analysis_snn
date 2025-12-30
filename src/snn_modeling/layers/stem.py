@@ -32,6 +32,7 @@ class ClassifierHead(nn.Module):
     
     def forward(self, x):
         return self.head(x)
+        
     
 class BottleneckBlock(nn.Module):
     def __init__(self, in_channels, p_drop=0.2, spike_model=snn.Leaky, **neuron_params):
