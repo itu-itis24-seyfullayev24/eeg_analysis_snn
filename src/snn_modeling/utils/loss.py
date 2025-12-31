@@ -64,6 +64,22 @@ class TopKClassificationLoss(nn.Module):
         return loss
 
 class ContrastiveLoss(nn.Module):
+
+    """
+    Reference:
+    @misc{kim2025temperaturefree,
+        title={Temperature-Free Loss Function for Contrastive Learning}, 
+        author={Bum Jun Kim and Sang Woo Kim},
+        year={2025},
+        eprint={2501.17683},
+        archivePrefix={arXiv},
+        primaryClass={cs.LG},
+        url={https://arxiv.org/abs/2501.17683}
+    }
+    Implementation Note:
+    Replaces standard exp(sim / temp) with exp(arctanh(sim)) to prevent 
+    gradient vanishing on well-clustered embeddings.
+    """
     
     def __init__(self):
         super(ContrastiveLoss, self).__init__()
