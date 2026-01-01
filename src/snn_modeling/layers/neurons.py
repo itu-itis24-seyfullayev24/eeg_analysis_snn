@@ -116,7 +116,7 @@ class ALIF(nn.Module):
         self.recurrent = recurrent
         if recurrent:
             padding = kernel_size // 2
-            self.recurrent_conv = nn.Conv2d(num_channels, num_channels, kernel_size=kernel_size, padding=padding)
+            self.recurrent_conv = nn.Conv2d(num_channels, num_channels, kernel_size=kernel_size, padding=padding, bias=False)
 
     
     def forward(self, x):
@@ -165,7 +165,7 @@ class ALIF(nn.Module):
                 adapt_thresh = (decay_adapt * adapt_thresh) + (gamma_adapt * spike)
 
             spike_prev = spike
-            
+
         self.mem = mem.detach() 
 
         if self.return_mem:
