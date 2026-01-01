@@ -69,7 +69,11 @@ class SWEEPDataset(Dataset):
         self.grid_size = config['data'].get('grid_size', 32)
         self.dataset_path = config['data']['dataset_path'] 
         self.samples_dir = os.path.join(self.dataset_path)
+        self.preload = config['data'].get('preload_ram', False) 
+        self.cache = {}
+
         index_file = os.path.join(self.dataset_path, "index.csv")
+
 
         if not os.path.exists(index_file):
             raise FileNotFoundError(f"Index not found at {index_file}.")
@@ -82,14 +86,8 @@ class SWEEPDataset(Dataset):
         
         df_train = df[df['filename'].str.split('_').str[0] != str(loso)]
         df_val = df[df['filename'].str.split('_').str[0] == str(loso)]
-        """
-        train_idx, val_idx = train_test_split(
-            indices, 
-            test_size=(1 - config['data'].get('train_split', 0.8)), 
-            random_state=42, 
-            stratify=labels # Ensures balanced classes in both sets
-        )
-        """
+     
+
         if split == 'train':
             print(f"Selecting TRAINING set ({len(df_train)} samples)")
             df_slice = df_train if not experiment else df_train.sample(25000, random_state=42) #[:25000]
@@ -98,7 +96,21 @@ class SWEEPDataset(Dataset):
             df_slice = df_val if not experiment else df_val.sample(6400, random_state=42)#[:6400]
         else:
             raise ValueError(f"Unknown split '{split}'. Use 'train' or 'val'.")
+        
         self.samples = list(zip(df_slice['filename'], df_slice['emotion_id']))
+
+        if self.preload:
+            print("Preloading data into RAM...")
+            for fname, _ in self.samples:
+                file_path = os.path.join(self.samples_dir, fname)
+                try:
+                    video = torch.load(file_path).float().clone()
+                    self.cache[fname] = video
+                except Exception as e:
+                    print(f"Error loading {fname}: {e}")
+            print("Cache complete!")
+
+
         sigma = config['mask'].get('sigma', 0.25)
         radius = config['mask'].get('radius', 0.7)
         if prototypes is not None:
@@ -130,14 +142,17 @@ class SWEEPDataset(Dataset):
         fname, label_idx = self.samples[idx]
         
         file_path = os.path.join(self.samples_dir, fname)
-        try:
-            video = torch.load(file_path) 
-        except Exception as e:
-            print(f"Error loading {fname}: {e}")
-            return torch.zeros(5, 32, 32, 32), torch.zeros(self.num_classes, 32, 32), 0
+        if self.preload:
+            video = self.cache[fname].float() 
+        else:
+            try:
+                video = torch.load(file_path) 
+            except Exception as e:
+                print(f"Error loading {fname}: {e}")
+                return torch.zeros(5, 32, 32, 32), torch.zeros(self.num_classes, 32, 32), 0
         
-        p98_instance = torch.maximum(torch.quantile(video.abs().flatten(), 0.98), torch.tensor(1e-6))
-        video = torch.tanh(video / p98_instance * 3.0)
+        #p98_instance = torch.maximum(torch.quantile(video.abs().flatten(), 0.98), torch.tensor(1e-6))
+        #video = torch.tanh(video / p98_instance * 3.0)
 
 
         target_volume = torch.zeros(self.num_classes, self.grid_size, self.grid_size)

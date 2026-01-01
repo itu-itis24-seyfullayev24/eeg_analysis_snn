@@ -5,7 +5,7 @@ from torch.utils.data import DataLoader
 from torch.utils.tensorboard import SummaryWriter
 from src.snn_modeling.utils.loss import FullHybridLoss, TopKClassificationLoss
 from src.snn_modeling.dataloader.dataset import SWEEPDataset
-
+import time
 import os
 from datetime import datetime
 from sklearn.model_selection import train_test_split
@@ -30,8 +30,8 @@ warnings.filterwarnings("ignore", category=UserWarning)
 warnings.filterwarnings("ignore", category=FutureWarning)
 warnings.filterwarnings("ignore", category=UndefinedMetricWarning)
 
-torch.autograd.set_detect_anomaly(True)
-
+#torch.autograd.set_detect_anomaly(True)
+torch.backends.cudnn.benchmark = True
 def save_checkpoint(model, optimizer, scheduler, epoch, acc, dice, path="best_sweepnet.pt"):
     torch.save({
         'epoch': epoch,
@@ -58,7 +58,10 @@ def validate(model, val_loader, criterion, device, threshold=0.5, only_classific
     with torch.no_grad():
         for inputs, targets, labels in val_loader:
             inputs, targets, labels = inputs.to(device), targets.to(device), labels.to(device)
-
+            B,C,T,H,W = inputs.shape
+            flat = inputs.view(B, -1).abs()
+            p98 = torch.quantile(flat, 0.98, dim=1, keepdim=True).view(B, 1, 1, 1, 1)
+            inputs = torch.tanh(inputs / (p98 + 1e-6) * 3.0)
             inputs = inputs.permute(2, 0, 1, 3, 4)
             
             outputs = model(inputs)
@@ -235,6 +238,7 @@ def training_loop(phase,
 
     for epoch in range(start_epoch, epochs):
         model.train()
+
         if freeze_bn:
             model.encoder.apply(freeze_bn_stats)
         train_loss = 0.0
@@ -242,7 +246,10 @@ def training_loop(phase,
         for batch_idx, (inputs, targets, targets_c) in enumerate(train_loop):
             
             inputs, targets, targets_c = inputs.to(device), targets.to(device), targets_c.to(device)
-            
+            B,C,T,H,W = inputs.shape
+            flat = inputs.view(B, -1).abs()
+            p98 = torch.quantile(flat, 0.98, dim=1, keepdim=True).view(B, 1, 1, 1, 1)
+            inputs = torch.tanh(inputs / (p98 + 1e-6) * 3.0)
             inputs = inputs.permute(2, 0, 1, 3, 4)
             outputs = model(inputs)
 
@@ -306,7 +313,7 @@ def phase_one(config, model, device, train_loader, val_loader, writer, checkpoin
         num_classes=config['model'].get('num_classes', 5)
     ).to(device)
 
-    initialize_network(enc_class, train_loader, device)
+    #initialize_network(enc_class, train_loader, device)
     loss_fn = FullHybridLoss(
         smooth = 0.,
         lambda_seg = config['loss'].get('lambda_seg', 1.0),
@@ -481,8 +488,19 @@ def run_training(config, model, device, phase, resume, loso, checkpoint=None):
         loso=loso
     )
 
-    train_loader = DataLoader(train_set, batch_size=config['training']['batch_size'], shuffle=True, num_workers=config['data'].get('num_workers', 0))
-    val_loader = DataLoader(val_set, batch_size=config['training']['batch_size'], shuffle=False, num_workers=config['data'].get('num_workers', 0))
+    train_loader = DataLoader(train_set, 
+                              batch_size=config['training']['batch_size'],
+                              shuffle=True, 
+                              num_workers=config['data'].get('num_workers', 0),
+                              prefetch_factor=2,
+                              persistent_workers=True)
+    
+    val_loader = DataLoader(val_set, 
+                            batch_size=config['training']['batch_size'], 
+                            shuffle=False, 
+                            num_workers=config['data'].get('num_workers', 0),
+                            prefetch_factor=2,
+                            persistent_workers=True)
 
     print(f"Data Loaded: {len(train_set)} Train | {len(val_set)} Val")
     

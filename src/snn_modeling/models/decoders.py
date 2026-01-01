@@ -14,12 +14,17 @@ class SpikingResNetDecoder(nn.Module):
             spike_model=spike_model, **neuron_params
         )
         
+        second_layer_params = neuron_params
+        if spike_model.__name__ == 'ALIF':
+            second_layer_params['recurrent'] = True
+
         self.up2 = SpikingUpsampleBlock(
             in_channels=256, 
             skip_channels=128, 
             out_channels=128, 
-            spike_model=spike_model, **neuron_params
+            spike_model=spike_model, **second_layer_params
         )
+
         last_layer = neuron_params
         if spike_model.__name__ == 'ALIF':
             last_layer['return_mem'] = True
