@@ -65,7 +65,7 @@ def validate(model, val_loader, criterion, device, threshold=0.5, only_classific
             loss = criterion(outputs, targets, labels)
 
             val_loss += loss.item()
-
+            outputs, _ = outputs
             B, C, H, W = outputs.shape
             k_percent = loss.k_percent if hasattr(loss, 'k_percent') else 0.1
             k = max(1, int(H * W * k_percent))
