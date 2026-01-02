@@ -49,23 +49,15 @@ class UNet(nn.Module):
         raise NotImplementedError("This is a placeholder for the ANN UNet.")
 
 class SpikingResNetClassifier(nn.Module):
-    def __init__(self, encoder_backbone, num_classes=5, feature_dim=512, head_dim=128):
+    def __init__(self, encoder_backbone, num_classes=5):
         super().__init__()
 
         self.encoder = encoder_backbone 
         self.num_classes = num_classes
         self.classifier = ClassifierHead(512, num_classes)
-        self.supcon_head = nn.Sequential(
-            nn.AdaptiveAvgPool2d((1,1)),
-            nn.Conv2d(feature_dim, feature_dim, kernel_size=1),
-            nn.SiLU(inplace=True),
-            nn.Conv2d(feature_dim, head_dim, kernel_size=1)
-        )
+        
 
     def forward(self, x):
         features, _ = self.encoder(x)
-        T, B, C, H, W = features.shape
         out = self.classifier(features)
-        proj = self.supcon_head(features.view(T * B, C, H, W)) + 1e-6 
-        embedding = F.normalize(proj.view(T * B, -1), dim=1)
-        return out.mean(dim=0), embedding  # Mean over time dimension
+        return out.mean(dim=0) # Mean over time dimension

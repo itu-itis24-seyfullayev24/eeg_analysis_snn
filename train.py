@@ -317,7 +317,7 @@ def phase_one(config, model, device, train_loader, val_loader, writer, checkpoin
     loss_fn = FullHybridLoss(
         smooth = 0.,
         lambda_seg = config['loss'].get('lambda_seg', 1.0),
-        lambda_con = config['loss'].get('lambda_con', 0.5),
+        lambda_con = config['loss'].get('lambda_con', 0.0),
         lambda_class = config['loss'].get('lambda_class', 1.0),
         alpha = 0.,
         beta = 0.,

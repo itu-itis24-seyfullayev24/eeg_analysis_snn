@@ -3,6 +3,7 @@ import torch
 import snntorch as snn
 from .residual_blocks import ConvSpiking
 from .neurons import TimeDistributed
+import torch.nn.functional as F
 
 class StemLayer(nn.Module):
     def __init__(self, in_channels):
@@ -46,3 +47,18 @@ class BottleneckBlock(nn.Module):
         x = self.drop(x)
         x = self.conv2(x)
         return x
+
+class ProjectionHead(nn.Module):
+    def __init__(self, feature_dim=512, head_dim=128):
+        super(ProjectionHead, self).__init__()
+        self.supcon_head = nn.Sequential(
+            nn.AdaptiveAvgPool2d((1,1)),
+            nn.Conv2d(feature_dim, feature_dim, kernel_size=1),
+            nn.SiLU(inplace=True),
+            nn.Conv2d(feature_dim, head_dim, kernel_size=1)
+        )
+    def forward(self, features):
+        T, B, C, H, W = features.shape
+        proj = self.supcon_head(features.view(T * B, C, H, W)) + 1e-6 
+        embedding = F.normalize(proj.view(T * B, -1), dim=1)
+        return embedding
